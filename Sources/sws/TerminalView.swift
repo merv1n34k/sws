@@ -166,17 +166,6 @@ final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
                     self.dragOrigin = nil
                     return nil
                 }
-                if inTerminal {
-                    // Auto-copy selection to clipboard on mouse release (tmux-style)
-                    DispatchQueue.main.async {
-                        if let sel = self.terminal.getSelection(), !sel.isEmpty {
-                            let pb = NSPasteboard.general
-                            pb.clearContents()
-                            pb.setString(sel, forType: .string)
-                            self.terminal.selectNone()
-                        }
-                    }
-                }
             default:
                 break
             }

@@ -1,221 +1,107 @@
 import AppKit
+import SwiftTerm
 
-final class TerminalView: NSView {
-    private let scrollView = NSScrollView()
-    private let textView = NSTextView()
-    private let pty = PTY()
+// Subclass to hide scroller and silence bell
+final class SilentTerminalView: LocalProcessTerminalView {
+    override func bell(source: Terminal) {}
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        hideScroller()
+    }
+
+    override func layout() {
+        super.layout()
+        hideScroller()
+    }
+
+    private func hideScroller() {
+        for sub in subviews where sub is NSScroller {
+            sub.isHidden = true
+        }
+    }
+}
+
+final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
+    let terminal: SilentTerminalView
     private var config: SWSConfig
-
-    var isProcessRunning: Bool { pty.isRunning }
     private var currentInputLine = ""
+    private var processRunning = false
     private var dragOrigin: NSPoint?
 
+    var isProcessRunning: Bool { processRunning }
     var onProcessExit: (() -> Void)?
 
     init(config: SWSConfig) {
         self.config = config
+        self.terminal = SilentTerminalView(frame: .zero)
         super.init(frame: .zero)
-        setupUI()
-        setupPTY()
+
+        let font = NSFont(name: config.fontFamily, size: config.fontSize)
+            ?? NSFont.monospacedSystemFont(ofSize: config.fontSize, weight: .regular)
+        terminal.font = font
+        terminal.nativeForegroundColor = NSColor(white: 0.95, alpha: 1.0)
+        terminal.nativeBackgroundColor = NSColor(white: 0.1, alpha: 1.0)
+        terminal.layer?.backgroundColor = terminal.nativeBackgroundColor.cgColor
+        terminal.caretColor = NSColor(white: 0.7, alpha: 1.0)
+        terminal.optionAsMetaKey = true
+        terminal.processDelegate = self
+        terminal.getTerminal().setCursorStyle(.steadyBar)
+
+        if config.logInput {
+            installInputLogger()
+        }
+
+        installDragHandler()
+
+        terminal.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(terminal)
+
+        let pad: CGFloat = 15
+        NSLayoutConstraint.activate([
+            terminal.topAnchor.constraint(equalTo: topAnchor, constant: pad),
+            terminal.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -pad),
+            terminal.leadingAnchor.constraint(equalTo: leadingAnchor, constant: pad),
+            terminal.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -pad),
+        ])
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    private func setupUI() {
-        let font = NSFont(name: config.fontFamily, size: config.fontSize)
-            ?? NSFont.monospacedSystemFont(ofSize: config.fontSize, weight: .regular)
-
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autoresizingMask = [.width, .height]
-        scrollView.drawsBackground = true
-        scrollView.backgroundColor = NSColor(white: 0.1, alpha: 1.0)
-
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.isRichText = false
-        textView.backgroundColor = NSColor(white: 0.1, alpha: 1.0)
-        textView.textColor = NSColor(white: 0.95, alpha: 1.0)
-        textView.insertionPointColor = NSColor(white: 0.95, alpha: 1.0)
-        textView.font = font
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticTextReplacementEnabled = false
-        textView.isAutomaticSpellingCorrectionEnabled = false
-        textView.isAutomaticTextCompletionEnabled = false
-        textView.textContainerInset = NSSize(width: 10, height: 10)
-        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.textContainer?.widthTracksTextView = true
-
-        scrollView.documentView = textView
-        scrollView.frame = bounds
-        addSubview(scrollView)
-    }
-
-    private func setupPTY() {
-        pty.onOutput = { [weak self] data in
-            self?.appendOutput(data)
-        }
-        pty.onExit = { [weak self] in
-            self?.appendText("\n[Process exited]\n")
-            self?.onProcessExit?()
-        }
-    }
-
     func startProcess() {
-        pty.start(command: config.command, args: config.args)
-        updatePTYSize()
+        processRunning = true
+        terminal.startProcess(
+            executable: config.command,
+            args: config.args,
+            environment: nil
+        )
     }
 
     func stopProcess() {
-        pty.stop()
+        processRunning = false
+        terminal.terminate()
     }
 
     func updateConfig(_ newConfig: SWSConfig) {
         config = newConfig
         let font = NSFont(name: config.fontFamily, size: config.fontSize)
             ?? NSFont.monospacedSystemFont(ofSize: config.fontSize, weight: .regular)
-        textView.font = font
+        terminal.font = font
     }
 
-    override func resizeSubviews(withOldSize oldSize: NSSize) {
-        super.resizeSubviews(withOldSize: oldSize)
-        scrollView.frame = bounds
-        updatePTYSize()
-    }
+    // MARK: - Input logging
 
-    private func updatePTYSize() {
-        guard let font = textView.font else { return }
-        let charWidth = font.advancement(forGlyph: font.glyph(withName: "M")).width
-        let lineHeight = font.ascender - font.descender + font.leading
-        guard charWidth > 0, lineHeight > 0 else { return }
-
-        let cols = UInt16(max(1, bounds.width / charWidth))
-        let rows = UInt16(max(1, bounds.height / lineHeight))
-        pty.resize(cols: cols, rows: rows)
-    }
-
-    // Strip basic ANSI escape sequences
-    private func stripANSI(_ string: String) -> String {
-        // Remove CSI sequences: ESC[ ... final_byte
-        var result = string
-        while let range = result.range(of: "\u{1B}\\[[0-9;]*[A-Za-z]", options: .regularExpression) {
-            result.removeSubrange(range)
-        }
-        // Remove OSC sequences: ESC] ... ST
-        while let range = result.range(of: "\u{1B}\\][^\u{07}\u{1B}]*(\u{07}|\u{1B}\\\\)", options: .regularExpression) {
-            result.removeSubrange(range)
-        }
-        return result
-    }
-
-    private func appendOutput(_ data: Data) {
-        guard let raw = String(data: data, encoding: .utf8) else { return }
-        let text = stripANSI(raw)
-        processText(text)
-    }
-
-    private func processText(_ text: String) {
-        let storage = textView.textStorage!
-        let attrs: [NSAttributedString.Key: Any] = [
-            .foregroundColor: NSColor(white: 0.95, alpha: 1.0),
-            .font: textView.font ?? NSFont.monospacedSystemFont(ofSize: 14, weight: .regular),
-        ]
-
-        for ch in text {
-            switch ch {
-            case "\u{08}": // backspace
-                let len = storage.length
-                if len > 0 {
-                    storage.deleteCharacters(in: NSRange(location: len - 1, length: 1))
-                }
-            case "\r": // carriage return — move to start of current line
-                let str = storage.string
-                if let nlRange = str.range(of: "\n", options: .backwards) {
-                    let afterNL = str.distance(from: str.startIndex, to: nlRange.upperBound)
-                    let deleteLen = storage.length - afterNL
-                    if deleteLen > 0 {
-                        storage.deleteCharacters(in: NSRange(location: afterNL, length: deleteLen))
-                    }
-                } else {
-                    // No newline — clear everything
-                    storage.deleteCharacters(in: NSRange(location: 0, length: storage.length))
-                }
-            case "\u{07}": // bell — ignore
-                break
-            default:
-                storage.append(NSAttributedString(string: String(ch), attributes: attrs))
+    private func installInputLogger() {
+        // SwiftTerm sends data through its TerminalViewDelegate.send() method.
+        // We subclass the terminal's send path by monitoring NSEvent key input.
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self, self.config.logInput,
+                  self.window?.firstResponder === self.terminal else { return event }
+            if let chars = event.characters {
+                self.trackInput(chars)
             }
-        }
-        textView.scrollToEndOfDocument(nil)
-    }
-
-    private func appendText(_ text: String) {
-        let storage = textView.textStorage!
-        let attrs: [NSAttributedString.Key: Any] = [
-            .foregroundColor: NSColor(white: 0.95, alpha: 1.0),
-            .font: textView.font ?? NSFont.monospacedSystemFont(ofSize: 14, weight: .regular),
-        ]
-        storage.append(NSAttributedString(string: text, attributes: attrs))
-        textView.scrollToEndOfDocument(nil)
-    }
-
-    // Option+drag to move window
-    override func mouseDown(with event: NSEvent) {
-        if event.modifierFlags.contains(.option) {
-            dragOrigin = event.locationInWindow
-        } else {
-            super.mouseDown(with: event)
-        }
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        if let origin = dragOrigin, let win = window {
-            let current = event.locationInWindow
-            var frame = win.frame
-            frame.origin.x += current.x - origin.x
-            frame.origin.y += current.y - origin.y
-            win.setFrameOrigin(frame.origin)
-        } else {
-            super.mouseDragged(with: event)
-        }
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        if dragOrigin != nil {
-            dragOrigin = nil
-        } else {
-            super.mouseUp(with: event)
-        }
-    }
-
-    // Handle keyboard input
-    override var acceptsFirstResponder: Bool { true }
-
-    override func keyDown(with event: NSEvent) {
-        guard pty.isRunning else { return }
-
-        if event.modifierFlags.contains(.control) {
-            // Ctrl+key combos
-            if let chars = event.charactersIgnoringModifiers, let c = chars.unicodeScalars.first {
-                let code = c.value
-                // Ctrl+A=1 .. Ctrl+Z=26
-                if code >= UInt32(Character("a").asciiValue!), code <= UInt32(Character("z").asciiValue!) {
-                    let ctrl = code - UInt32(Character("a").asciiValue!) + 1
-                    pty.write(Data([UInt8(ctrl)]))
-                    return
-                }
-            }
-        }
-
-        if let chars = event.characters {
-            if config.logInput {
-                trackInput(chars)
-            }
-            pty.write(chars)
+            return event
         }
     }
 
@@ -251,7 +137,63 @@ final class TerminalView: NSView {
         }
     }
 
-    // Ensure we get key events
-    override func becomeFirstResponder() -> Bool { true }
-    override func resignFirstResponder() -> Bool { true }
+    // MARK: - Option+drag to move window
+
+    private func installDragHandler() {
+        NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            guard let self = self, self.window?.isVisible == true else { return event }
+            let loc = event.locationInWindow
+            let localPoint = self.terminal.convert(loc, from: nil)
+            let inTerminal = self.terminal.bounds.contains(localPoint)
+
+            switch event.type {
+            case .leftMouseDown:
+                if event.modifierFlags.contains(.option) && inTerminal {
+                    self.dragOrigin = event.locationInWindow
+                    return nil // consume event
+                }
+            case .leftMouseDragged:
+                if let origin = self.dragOrigin, let win = self.window {
+                    let current = event.locationInWindow
+                    var frame = win.frame
+                    frame.origin.x += current.x - origin.x
+                    frame.origin.y += current.y - origin.y
+                    win.setFrameOrigin(frame.origin)
+                    return nil
+                }
+            case .leftMouseUp:
+                if self.dragOrigin != nil {
+                    self.dragOrigin = nil
+                    return nil
+                }
+                if inTerminal {
+                    // Auto-copy selection to clipboard on mouse release (tmux-style)
+                    DispatchQueue.main.async {
+                        if let sel = self.terminal.getSelection(), !sel.isEmpty {
+                            let pb = NSPasteboard.general
+                            pb.clearContents()
+                            pb.setString(sel, forType: .string)
+                            self.terminal.selectNone()
+                        }
+                    }
+                }
+            default:
+                break
+            }
+            return event
+        }
+    }
+
+    // MARK: - LocalProcessTerminalViewDelegate
+
+    func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
+
+    func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
+
+    func hostCurrentDirectoryUpdate(source: SwiftTerm.TerminalView, directory: String?) {}
+
+    func processTerminated(source: SwiftTerm.TerminalView, exitCode: Int32?) {
+        processRunning = false
+        onProcessExit?()
+    }
 }

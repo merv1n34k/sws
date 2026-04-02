@@ -23,7 +23,7 @@ final class TerminalWindow: NSPanel {
         self.isFloatingPanel = true
         self.hidesOnDeactivate = false
         self.becomesKeyOnlyIfNeeded = false
-        self.isMovableByWindowBackground = true
+        self.isMovableByWindowBackground = false
         self.backgroundColor = .clear
         self.isOpaque = false
         self.isReleasedWhenClosed = false
@@ -64,7 +64,7 @@ final class TerminalWindow: NSPanel {
         }
         makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        makeFirstResponder(terminalView)
+        makeFirstResponder(terminalView.terminal)
     }
 
     func hide() {

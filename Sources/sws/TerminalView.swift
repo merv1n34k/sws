@@ -1,8 +1,10 @@
 import AppKit
 import SwiftTerm
 
-// Subclass to hide scroller and silence bell
+// Subclass to hide scroller, silence bell, and capture output
 final class SilentTerminalView: LocalProcessTerminalView {
+    var onDataReceived: ((Data) -> Void)?
+
     override func bell(source: Terminal) {}
 
     override func viewDidMoveToSuperview() {
@@ -20,14 +22,20 @@ final class SilentTerminalView: LocalProcessTerminalView {
             sub.isHidden = true
         }
     }
+
+    override func dataReceived(slice: ArraySlice<UInt8>) {
+        super.dataReceived(slice: slice)
+        onDataReceived?(Data(slice))
+    }
 }
 
 final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
     let terminal: SilentTerminalView
     private var config: SWSConfig
-    private var currentInputLine = ""
     private var processRunning = false
     private var dragOrigin: NSPoint?
+    private var logHandle: FileHandle?
+    private var pendingSeparator: String?
 
     var isProcessRunning: Bool { processRunning }
     var onProcessExit: (() -> Void)?
@@ -49,7 +57,7 @@ final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
         terminal.getTerminal().setCursorStyle(.steadyBar)
 
         if config.logInput {
-            installInputLogger()
+            setupLogging()
         }
 
         installDragHandler()
@@ -90,51 +98,50 @@ final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
         terminal.font = font
     }
 
-    // MARK: - Input logging
+    // MARK: - Session logging
 
-    private func installInputLogger() {
-        // SwiftTerm sends data through its TerminalViewDelegate.send() method.
-        // We subclass the terminal's send path by monitoring NSEvent key input.
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self = self, self.config.logInput,
-                  self.window?.firstResponder === self.terminal else { return event }
-            if let chars = event.characters {
-                self.trackInput(chars)
-            }
-            return event
+    private func setupLogging() {
+        terminal.onDataReceived = { [weak self] data in
+            self?.logData(data)
         }
     }
 
-    private func trackInput(_ chars: String) {
-        for ch in chars {
-            if ch == "\r" || ch == "\n" {
-                logLine(currentInputLine)
-                currentInputLine = ""
-            } else if ch == "\u{7F}" || ch == "\u{08}" {
-                if !currentInputLine.isEmpty {
-                    currentInputLine.removeLast()
-                }
-            } else if !ch.isASCII || ch >= " " {
-                currentInputLine.append(ch)
-            }
+    func writeSessionSeparator() {
+        guard config.logInput else { return }
+        let df = DateFormatter()
+        df.dateFormat = "yy/MM/dd HH:mm:ss"
+        pendingSeparator = "\n[\(df.string(from: Date()))]\n"
+    }
+
+    private static let ansiPattern = try! NSRegularExpression(
+        pattern: "\\x1b\\[[0-9;?]*[a-zA-Z]|\\x1b\\][^\u{07}]*\u{07}|\\x1b[()][0-9A-B]"
+    )
+
+    private func logData(_ data: Data) {
+        if let sep = pendingSeparator, let sepData = sep.data(using: .utf8) {
+            pendingSeparator = nil
+            writeToLog(sepData)
+        }
+        guard let raw = String(data: data, encoding: .utf8) else { return }
+        let range = NSRange(raw.startIndex..., in: raw)
+        let clean = Self.ansiPattern.stringByReplacingMatches(in: raw, range: range, withTemplate: "")
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        if let cleanData = clean.data(using: .utf8), !cleanData.isEmpty {
+            writeToLog(cleanData)
         }
     }
 
-    private func logLine(_ line: String) {
-        guard !line.isEmpty else { return }
-        let logFile = SWSConfig.logFile
-        let entry = line + "\n"
-        if let data = entry.data(using: .utf8) {
-            if FileManager.default.fileExists(atPath: logFile.path) {
-                if let handle = try? FileHandle(forWritingTo: logFile) {
-                    handle.seekToEndOfFile()
-                    handle.write(data)
-                    handle.closeFile()
-                }
-            } else {
-                try? data.write(to: logFile)
+    private func writeToLog(_ data: Data) {
+        if logHandle == nil {
+            let path = SWSConfig.logFile.path
+            if !FileManager.default.fileExists(atPath: path) {
+                FileManager.default.createFile(atPath: path, contents: nil)
             }
+            logHandle = FileHandle(forWritingAtPath: path)
+            logHandle?.seekToEndOfFile()
         }
+        logHandle?.write(data)
     }
 
     // MARK: - Option+drag to move window

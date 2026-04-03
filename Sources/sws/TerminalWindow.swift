@@ -62,6 +62,7 @@ final class TerminalWindow: NSPanel {
         if !terminalView.isProcessRunning {
             terminalView.startProcess()
         }
+        terminalView.writeSessionSeparator()
         makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         makeFirstResponder(terminalView.terminal)

@@ -98,11 +98,14 @@ final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
         terminal.font = font
     }
 
+    private var lastLoggedLine = 0
+    private var logDebounce: DispatchWorkItem?
+
     // MARK: - Session logging
 
     private func setupLogging() {
-        terminal.onDataReceived = { [weak self] data in
-            self?.logData(data)
+        terminal.onDataReceived = { [weak self] _ in
+            self?.scheduleLogFlush()
         }
     }
 
@@ -113,23 +116,35 @@ final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
         pendingSeparator = "\n[\(df.string(from: Date()))]\n"
     }
 
-    private static let ansiPattern = try! NSRegularExpression(
-        pattern: "\\x1b\\[[0-9;?]*[a-zA-Z]|\\x1b\\][^\u{07}]*\u{07}|\\x1b[()][0-9A-B]"
-    )
+    private func scheduleLogFlush() {
+        logDebounce?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.flushNewLines()
+        }
+        logDebounce = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
+    }
 
-    private func logData(_ data: Data) {
+    private func flushNewLines() {
+        let term = terminal.getTerminal()
+        let topRow = term.getTopVisibleRow()
+        let currentLine = topRow + term.getCursorLocation().y
+
+        if currentLine < lastLoggedLine { lastLoggedLine = 0 }
+        guard currentLine > lastLoggedLine else { return }
+
         if let sep = pendingSeparator, let sepData = sep.data(using: .utf8) {
             pendingSeparator = nil
             writeToLog(sepData)
         }
-        guard let raw = String(data: data, encoding: .utf8) else { return }
-        let range = NSRange(raw.startIndex..., in: raw)
-        let clean = Self.ansiPattern.stringByReplacingMatches(in: raw, range: range, withTemplate: "")
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-        if let cleanData = clean.data(using: .utf8), !cleanData.isEmpty {
-            writeToLog(cleanData)
+
+        for i in lastLoggedLine ..< currentLine {
+            if let line = term.getLine(row: i - topRow) {
+                let text = line.translateToString(trimRight: true)
+                writeToLog(Data((text + "\n").utf8))
+            }
         }
+        lastLoggedLine = currentLine
     }
 
     private func writeToLog(_ data: Data) {

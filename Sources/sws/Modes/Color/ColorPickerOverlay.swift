@@ -110,7 +110,13 @@ final class ColorPickerOverlay {
             return nil
         }
         let csName = (img.colorSpace?.name as String?) ?? "unknown"
-        print("SWS picker: cg(\(Int(point.x)),\(Int(point.y))) image=\(img.width)x\(img.height) cs=\(csName) -> sRGB(\(rgb.r),\(rgb.g),\(rgb.b))")
+        let alphaInfo = CGImageAlphaInfo(rawValue: img.bitmapInfo.rawValue & CGBitmapInfo.alphaInfoMask.rawValue)!
+        let little = img.bitmapInfo.contains(.byteOrder32Little)
+        print("""
+        SWS picker: cg(\(Int(point.x)),\(Int(point.y))) \
+        image=\(img.width)x\(img.height) bpp=\(img.bitsPerPixel) row=\(img.bytesPerRow) \
+        alpha=\(alphaInfo.rawValue) little=\(little) cs=\(csName) -> rgb(\(rgb.r),\(rgb.g),\(rgb.b))
+        """)
         return NSColor(
             srgbRed: CGFloat(rgb.r) / 255,
             green: CGFloat(rgb.g) / 255,

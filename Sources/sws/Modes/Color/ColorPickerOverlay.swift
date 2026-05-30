@@ -76,24 +76,37 @@ final class ColorPickerOverlay {
     // MARK: - Capture
 
     /// Captures `rect` (in global CG screen coordinates) WITHOUT our
-    /// own overlay windows in the result. We orderOut the overlays
-    /// before the capture call, then bring them back after.
+    /// own overlay windows. Uses the windowID filter rather than
+    /// orderOut, because orderOut is asynchronous and the capture can
+    /// race ahead of the window server actually removing the window.
     private func captureScreenRegion(_ rect: CGRect) -> CGImage? {
-        for w in windows { w.orderOut(nil) }
-        let img = CGWindowListCreateImage(
-            rect,
-            .optionAll,
-            kCGNullWindowID,
-            [.bestResolution, .boundsIgnoreFraming]
-        )
-        for w in windows { w.orderFront(nil) }
-        return img
+        // Pick any of our overlay windows as the z-order reference;
+        // CGWindowListCreateImage with .optionOnScreenBelowWindow
+        // returns all windows strictly below that one — our overlays
+        // (same level, above) and the sws panel (.floating, above)
+        // are both excluded automatically.
+        if let any = windows.first {
+            let id = CGWindowID(any.windowNumber)
+            if let img = CGWindowListCreateImage(
+                rect,
+                .optionOnScreenBelowWindow,
+                id,
+                [.bestResolution, .boundsIgnoreFraming]
+            ) {
+                return img
+            }
+        }
+        return CGWindowListCreateImage(rect, .optionAll, kCGNullWindowID, [.bestResolution])
     }
 
     private func pickColor(at point: CGPoint) -> NSColor? {
         let captureRect = CGRect(x: point.x, y: point.y, width: 1, height: 1)
         guard let img = captureScreenRegion(captureRect),
               let rgb = PixelReader.firstPixel(of: img) else { return nil }
+        if let csName = img.colorSpace?.name {
+            NSLog("SWS picker: cg(%.0f,%.0f) image cs=%@ rgb=(%d,%d,%d)",
+                  point.x, point.y, csName as String, rgb.r, rgb.g, rgb.b)
+        }
         return NSColor(
             srgbRed: CGFloat(rgb.r) / 255,
             green: CGFloat(rgb.g) / 255,

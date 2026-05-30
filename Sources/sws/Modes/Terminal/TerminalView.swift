@@ -29,9 +29,17 @@ final class SilentTerminalView: LocalProcessTerminalView {
     }
 }
 
+struct TerminalViewConfig {
+    var command: String
+    var args: [String]
+    var fontFamily: String
+    var fontSize: Double
+    var logInput: Bool
+}
+
 final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
     let terminal: SilentTerminalView
-    private var config: SWSConfig
+    private var config: TerminalViewConfig
     private var processRunning = false
     private var dragOrigin: NSPoint?
 
@@ -49,7 +57,7 @@ final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
     var isProcessRunning: Bool { processRunning }
     var onProcessExit: (() -> Void)?
 
-    init(config: SWSConfig) {
+    init(config: TerminalViewConfig) {
         self.config = config
         self.terminal = SilentTerminalView(frame: .zero)
         super.init(frame: .zero)
@@ -100,7 +108,7 @@ final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
         terminal.terminate()
     }
 
-    func updateConfig(_ newConfig: SWSConfig) {
+    func updateConfig(_ newConfig: TerminalViewConfig) {
         config = newConfig
         let font = NSFont(name: config.fontFamily, size: config.fontSize)
             ?? NSFont.monospacedSystemFont(ofSize: config.fontSize, weight: .regular)

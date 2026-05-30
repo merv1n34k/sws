@@ -1,32 +1,45 @@
 import Carbon
 import AppKit
 
+/// Manages multiple Carbon global hotkeys, one per mode id. Modes can
+/// be registered and unregistered independently as the window
+/// shows/hides; the Carbon event handler is installed exactly once and
+/// dispatches by hotkey id back to the per-mode callback.
 final class HotkeyManager {
-    private var hotkeyRef: EventHotKeyRef?
+    private struct Registration {
+        let modeID: String
+        let ref: EventHotKeyRef
+        let callback: () -> Void
+    }
+
+    private var registrations: [UInt32: Registration] = [:]   // by Carbon hotKeyID.id
+    private var byModeID: [String: UInt32] = [:]              // mode id → hotKeyID.id
+    private var nextID: UInt32 = 1
     private var handlerRef: EventHandlerRef?
-    private var callback: (() -> Void)?
+    private static let signature: OSType = 0x5357_5348        // "SWSH"
 
     deinit {
-        unregister()
+        unregisterAll()
         if let h = handlerRef {
             RemoveEventHandler(h)
         }
     }
 
     @discardableResult
-    func register(key: String, modifiers: [String], callback: @escaping () -> Void) -> Bool {
-        unregister()
+    func register(modeID: String, key: String, modifiers: [String], callback: @escaping () -> Void) -> Bool {
+        unregister(modeID: modeID)
 
         guard let keyCode = HotkeyManager.virtualKeyCode(for: key) else {
-            NSLog("SWS: unknown hotkey key '\(key)' — not registering")
+            NSLog("SWS: unknown hotkey key '\(key)' for mode '\(modeID)' — not registering")
             return false
         }
         let mods = HotkeyManager.carbonModifiers(from: modifiers)
-        self.callback = callback
 
         installHandlerIfNeeded()
 
-        let hotkeyID = EventHotKeyID(signature: 0x5357_5348, id: 1) // "SWSH"
+        let id = nextID
+        nextID &+= 1
+        let hotkeyID = EventHotKeyID(signature: HotkeyManager.signature, id: id)
         var ref: EventHotKeyRef?
         let status = RegisterEventHotKey(
             UInt32(keyCode),
@@ -37,21 +50,33 @@ final class HotkeyManager {
             &ref
         )
 
-        if status == noErr {
-            hotkeyRef = ref
-            NSLog("SWS: hotkey registered (key=\(key), mods=\(modifiers))")
-            return true
-        } else {
-            NSLog("SWS: failed to register hotkey: \(status)")
+        guard status == noErr, let ref = ref else {
+            NSLog("SWS: failed to register hotkey for mode '\(modeID)': \(status)")
             return false
         }
+        registrations[id] = Registration(modeID: modeID, ref: ref, callback: callback)
+        byModeID[modeID] = id
+        NSLog("SWS: hotkey registered for mode '\(modeID)' (key=\(key), mods=\(modifiers))")
+        return true
     }
 
-    func unregister() {
-        if let ref = hotkeyRef {
-            UnregisterEventHotKey(ref)
-            hotkeyRef = nil
+    func unregister(modeID: String) {
+        guard let id = byModeID.removeValue(forKey: modeID),
+              let reg = registrations.removeValue(forKey: id) else { return }
+        UnregisterEventHotKey(reg.ref)
+    }
+
+    func unregisterAll(except keep: String? = nil) {
+        let keepID = keep.flatMap { byModeID[$0] }
+        for (id, reg) in registrations where id != keepID {
+            UnregisterEventHotKey(reg.ref)
         }
+        registrations = registrations.filter { $0.key == keepID }
+        byModeID = byModeID.filter { $0.value == keepID }
+    }
+
+    func isRegistered(modeID: String) -> Bool {
+        byModeID[modeID] != nil
     }
 
     private func installHandlerIfNeeded() {
@@ -65,10 +90,23 @@ final class HotkeyManager {
 
         InstallEventHandler(
             GetApplicationEventTarget(),
-            { _, _, userData -> OSStatus in
-                guard let userData = userData else { return noErr }
+            { _, event, userData -> OSStatus in
+                guard let userData = userData, let event = event else { return noErr }
                 let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
-                manager.callback?()
+
+                var hkID = EventHotKeyID()
+                let status = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hkID
+                )
+                if status == noErr, let reg = manager.registrations[hkID.id] {
+                    reg.callback()
+                }
                 return noErr
             },
             1,

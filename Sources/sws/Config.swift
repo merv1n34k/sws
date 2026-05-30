@@ -1,16 +1,32 @@
 import Foundation
 
-struct ShortcutConfig: Codable {
+struct ShortcutConfig: Codable, Equatable {
     var key: String
     var modifiers: [String]
 
     static let `default` = ShortcutConfig(key: "s", modifiers: ["shift", "option"])
 }
 
-struct SWSConfig: Codable {
-    var shortcut: ShortcutConfig
-    var command: String
-    var args: [String]
+/// One mode instance, as stored in config.json. The fields beyond the
+/// core keys (id/type/hotkey) are kept as JSON and handed to the
+/// factory in `ModeInstanceConfig.raw`.
+struct ModeConfig {
+    var id: String
+    var type: String
+    var hotkey: ShortcutConfig?
+    /// Raw JSON of the entire mode entry (including id/type/hotkey)
+    /// for factories that want to read their own fields.
+    var raw: [String: Any]
+
+    func toInstanceConfig() -> ModeInstanceConfig {
+        ModeInstanceConfig(id: id, typeId: type, hotkey: hotkey, raw: raw)
+    }
+}
+
+struct SWSConfig {
+    var version: Int
+    var defaultMode: String
+    var modes: [ModeConfig]
     var width: Double
     var height: Double
     var rememberSize: Bool
@@ -18,10 +34,25 @@ struct SWSConfig: Codable {
     var fontSize: Double
     var logInput: Bool
 
+    static let currentVersion = 2
+
     static let `default` = SWSConfig(
-        shortcut: .default,
-        command: "/usr/bin/bc",
-        args: ["-l"],
+        version: currentVersion,
+        defaultMode: "calc",
+        modes: [
+            ModeConfig(
+                id: "calc",
+                type: "terminal",
+                hotkey: .default,
+                raw: [
+                    "id": "calc",
+                    "type": "terminal",
+                    "hotkey": ["key": "s", "modifiers": ["shift", "option"]],
+                    "command": "/usr/bin/bc",
+                    "args": ["-l"],
+                ]
+            )
+        ],
         width: 600,
         height: 400,
         rememberSize: true,
@@ -29,33 +60,6 @@ struct SWSConfig: Codable {
         fontSize: 14,
         logInput: false
     )
-
-    init(shortcut: ShortcutConfig, command: String, args: [String],
-         width: Double, height: Double, rememberSize: Bool,
-         fontFamily: String, fontSize: Double, logInput: Bool) {
-        self.shortcut = shortcut
-        self.command = command
-        self.args = args
-        self.width = width
-        self.height = height
-        self.rememberSize = rememberSize
-        self.fontFamily = fontFamily
-        self.fontSize = fontSize
-        self.logInput = logInput
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        shortcut = try c.decode(ShortcutConfig.self, forKey: .shortcut)
-        command = try c.decode(String.self, forKey: .command)
-        args = try c.decode([String].self, forKey: .args)
-        width = try c.decode(Double.self, forKey: .width)
-        height = try c.decode(Double.self, forKey: .height)
-        rememberSize = try c.decode(Bool.self, forKey: .rememberSize)
-        fontFamily = try c.decode(String.self, forKey: .fontFamily)
-        fontSize = try c.decode(Double.self, forKey: .fontSize)
-        logInput = try c.decodeIfPresent(Bool.self, forKey: .logInput) ?? false
-    }
 
     static var logFile: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -78,18 +82,107 @@ struct SWSConfig: Codable {
         if fm.fileExists(atPath: file.path) {
             do {
                 let data = try Data(contentsOf: file)
-                let decoder = JSONDecoder()
-                return try decoder.decode(SWSConfig.self, from: data)
+                let (config, migrated) = try parse(data: data)
+                if migrated {
+                    config.save()
+                    NSLog("SWS: migrated config to v\(SWSConfig.currentVersion)")
+                }
+                return config
             } catch {
                 NSLog("SWS: failed to load config: \(error). Using defaults.")
                 return .default
             }
         }
 
-        // Create default config
         let config = SWSConfig.default
         config.save()
         return config
+    }
+
+    /// Parses raw JSON, transparently migrating v1 to v2.
+    /// Returns the parsed config and a flag indicating whether a migration ran.
+    static func parse(data: Data) throws -> (SWSConfig, migrated: Bool) {
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(domain: "SWSConfig", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "config root is not an object"])
+        }
+
+        let isV1 = json["modes"] == nil
+        let canonical = isV1 ? migrateV1ToV2(json) : json
+        return (try decodeV2(canonical), migrated: isV1)
+    }
+
+    private static func decodeV2(_ json: [String: Any]) throws -> SWSConfig {
+        guard let modesAny = json["modes"] as? [[String: Any]] else {
+            throw NSError(domain: "SWSConfig", code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "missing 'modes' array"])
+        }
+        let modes: [ModeConfig] = try modesAny.map { dict in
+            guard let id = dict["id"] as? String else {
+                throw NSError(domain: "SWSConfig", code: 3,
+                    userInfo: [NSLocalizedDescriptionKey: "mode missing 'id'"])
+            }
+            guard let type = dict["type"] as? String else {
+                throw NSError(domain: "SWSConfig", code: 4,
+                    userInfo: [NSLocalizedDescriptionKey: "mode '\(id)' missing 'type'"])
+            }
+            return ModeConfig(
+                id: id,
+                type: type,
+                hotkey: decodeShortcut(dict["hotkey"]),
+                raw: dict
+            )
+        }
+
+        let defaultMode = (json["defaultMode"] as? String) ?? modes.first?.id ?? "default"
+
+        return SWSConfig(
+            version: (json["version"] as? Int) ?? currentVersion,
+            defaultMode: defaultMode,
+            modes: modes,
+            width: (json["width"] as? Double) ?? 600,
+            height: (json["height"] as? Double) ?? 400,
+            rememberSize: (json["rememberSize"] as? Bool) ?? true,
+            fontFamily: (json["fontFamily"] as? String) ?? "Menlo",
+            fontSize: (json["fontSize"] as? Double) ?? 14,
+            logInput: (json["logInput"] as? Bool) ?? false
+        )
+    }
+
+    /// Wraps a v1 config (top-level `command`/`args`/`shortcut`) into a
+    /// single `default` terminal mode.
+    static func migrateV1ToV2(_ v1: [String: Any]) -> [String: Any] {
+        let shortcut = v1["shortcut"] as? [String: Any]
+            ?? ["key": "s", "modifiers": ["shift", "option"]]
+        let command = v1["command"] as? String ?? "/usr/bin/bc"
+        let args = v1["args"] as? [String] ?? ["-l"]
+
+        let mode: [String: Any] = [
+            "id": "default",
+            "type": "terminal",
+            "hotkey": shortcut,
+            "command": command,
+            "args": args,
+        ]
+
+        var v2: [String: Any] = [
+            "version": currentVersion,
+            "defaultMode": "default",
+            "modes": [mode],
+        ]
+        for key in ["width", "height", "rememberSize", "fontFamily", "fontSize", "logInput"] {
+            if let v = v1[key] { v2[key] = v }
+        }
+        return v2
+    }
+
+    private static func decodeShortcut(_ any: Any?) -> ShortcutConfig? {
+        guard let dict = any as? [String: Any],
+              let key = dict["key"] as? String,
+              let mods = dict["modifiers"] as? [String] else {
+            return nil
+        }
+        return ShortcutConfig(key: key, modifiers: mods)
     }
 
     func save() {
@@ -100,13 +193,29 @@ struct SWSConfig: Codable {
             if !fm.fileExists(atPath: dir.path) {
                 try fm.createDirectory(at: dir, withIntermediateDirectories: true)
             }
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(self)
+            let json = toJSON()
+            let data = try JSONSerialization.data(
+                withJSONObject: json,
+                options: [.prettyPrinted, .sortedKeys]
+            )
             try data.write(to: SWSConfig.configFile)
         } catch {
             NSLog("SWS: failed to save config: \(error)")
         }
+    }
+
+    func toJSON() -> [String: Any] {
+        return [
+            "version": version,
+            "defaultMode": defaultMode,
+            "modes": modes.map { $0.raw },
+            "width": width,
+            "height": height,
+            "rememberSize": rememberSize,
+            "fontFamily": fontFamily,
+            "fontSize": fontSize,
+            "logInput": logInput,
+        ]
     }
 
     func withSize(width: Double, height: Double) -> SWSConfig {
@@ -114,5 +223,9 @@ struct SWSConfig: Codable {
         copy.width = width
         copy.height = height
         return copy
+    }
+
+    func mode(byID id: String) -> ModeConfig? {
+        modes.first(where: { $0.id == id })
     }
 }

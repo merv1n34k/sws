@@ -1,22 +1,21 @@
 import AppKit
 
+/// App-wide preferences only. Mode definitions (command, args,
+/// hotkeys) live in ~/.config/sws/config.json under `modes` and are
+/// edited there directly for now.
 final class PreferencesWindow: NSWindow {
     private var config: SWSConfig
     var onConfigChanged: ((SWSConfig) -> Void)?
 
-    private let commandField = NSTextField()
-    private let argsField = NSTextField()
-    private let hotkeyKeyField = NSTextField()
-    private let hotkeyModsField = NSTextField()
     private let fontFamilyField = NSTextField()
     private let fontSizeField = NSTextField()
     private let rememberSizeCheck = NSButton(checkboxWithTitle: "Remember window size", target: nil, action: nil)
-    private let logInputCheck = NSButton(checkboxWithTitle: "Log input to ~/.sws.log", target: nil, action: nil)
+    private let logInputCheck = NSButton(checkboxWithTitle: "Log terminal output to ~/.sws.log", target: nil, action: nil)
 
     init(config: SWSConfig) {
         self.config = config
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 340),
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 240),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -32,11 +31,11 @@ final class PreferencesWindow: NSWindow {
         let content = NSView(frame: contentRect(forFrameRect: frame))
         contentView = content
 
-        let labels = ["Command:", "Arguments:", "Hotkey:", "Modifiers:", "Font:", "Font Size:"]
-        let fields: [NSTextField] = [commandField, argsField, hotkeyKeyField, hotkeyModsField, fontFamilyField, fontSizeField]
-        let placeholders = ["/usr/bin/bc", "-l", "s", "shift, option", "Menlo", "14"]
+        let labels = ["Font:", "Font Size:"]
+        let fields: [NSTextField] = [fontFamilyField, fontSizeField]
+        let placeholders = ["Menlo", "14"]
 
-        var y = 290.0
+        var y = 190.0
         for i in 0..<labels.count {
             let label = NSTextField(labelWithString: labels[i])
             label.frame = NSRect(x: 20, y: y, width: 90, height: 22)
@@ -58,6 +57,13 @@ final class PreferencesWindow: NSWindow {
         content.addSubview(logInputCheck)
         y -= 40
 
+        let hint = NSTextField(labelWithString: "Modes are configured in ~/.config/sws/config.json")
+        hint.frame = NSRect(x: 20, y: y, width: 380, height: 18)
+        hint.font = NSFont.systemFont(ofSize: 11)
+        hint.textColor = .secondaryLabelColor
+        content.addSubview(hint)
+        y -= 30
+
         let saveBtn = NSButton(title: "Save", target: self, action: #selector(save))
         saveBtn.bezelStyle = .rounded
         saveBtn.keyEquivalent = "\r"
@@ -72,10 +78,6 @@ final class PreferencesWindow: NSWindow {
     }
 
     private func loadValues() {
-        commandField.stringValue = config.command
-        argsField.stringValue = config.args.joined(separator: " ")
-        hotkeyKeyField.stringValue = config.shortcut.key
-        hotkeyModsField.stringValue = config.shortcut.modifiers.joined(separator: ", ")
         fontFamilyField.stringValue = config.fontFamily
         fontSizeField.stringValue = String(Int(config.fontSize))
         rememberSizeCheck.state = config.rememberSize ? .on : .off
@@ -83,14 +85,6 @@ final class PreferencesWindow: NSWindow {
     }
 
     @objc private func save() {
-        config.command = commandField.stringValue
-        config.args = argsField.stringValue
-            .split(separator: " ")
-            .map(String.init)
-        config.shortcut.key = hotkeyKeyField.stringValue.lowercased()
-        config.shortcut.modifiers = hotkeyModsField.stringValue
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
         config.fontFamily = fontFamilyField.stringValue
         if let size = Double(fontSizeField.stringValue), size > 0 {
             config.fontSize = size
@@ -98,7 +92,6 @@ final class PreferencesWindow: NSWindow {
         config.rememberSize = rememberSizeCheck.state == .on
         config.logInput = logInputCheck.state == .on
 
-        config.save()
         onConfigChanged?(config)
         close()
     }

@@ -22,6 +22,10 @@ protocol Mode: AnyObject {
     /// Window hid (this mode is the active one). The mode may continue
     /// background work; it just won't be visible.
     func windowDidHide()
+
+    /// Returns the responder that should receive keystrokes when the
+    /// mode is active. Default: the mode's view.
+    func preferredFirstResponder() -> NSResponder?
 }
 
 extension Mode {
@@ -30,6 +34,7 @@ extension Mode {
     func deactivate() {}
     func windowDidShow() {}
     func windowDidHide() {}
+    func preferredFirstResponder() -> NSResponder? { view() }
 }
 
 /// Per-mode-instance config slice handed to a factory.
@@ -42,10 +47,18 @@ struct ModeInstanceConfig {
     let raw: [String: Any]
 }
 
+/// App-wide preferences shared across modes (font, logging) so each
+/// factory doesn't reach into a global.
+struct AppPrefs {
+    var fontFamily: String
+    var fontSize: Double
+    var logInput: Bool
+}
+
 /// A factory builds Mode instances from config.
 protocol ModeFactory {
     static var typeId: String { get }
-    static func make(instance: ModeInstanceConfig) throws -> Mode
+    static func make(instance: ModeInstanceConfig, appPrefs: AppPrefs) throws -> Mode
 }
 
 enum ModeError: Error, CustomStringConvertible {
@@ -72,11 +85,11 @@ final class ModeRegistry {
         factories[factory.typeId] = factory
     }
 
-    func make(_ instance: ModeInstanceConfig) throws -> Mode {
+    func make(_ instance: ModeInstanceConfig, appPrefs: AppPrefs) throws -> Mode {
         guard let factory = factories[instance.typeId] else {
             throw ModeError.unknownType(instance.typeId)
         }
-        return try factory.make(instance: instance)
+        return try factory.make(instance: instance, appPrefs: appPrefs)
     }
 
     func has(typeId: String) -> Bool {

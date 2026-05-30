@@ -2,18 +2,148 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
-    private var hotkeyManager = HotkeyManager()
-    private var terminalWindow: TerminalWindow?
+    private let hotkeyManager = HotkeyManager()
+    private var window: ModeHostWindow?
     private var preferencesWindow: PreferencesWindow?
     private var config: SWSConfig!
+    private var modes: [String: Mode] = [:]    // id → instance
+    private var modeOrder: [String] = []       // preserves config order for menu
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        registerBuiltInModes()
         config = SWSConfig.load()
+        buildModes()
         setupMainMenu()
         setupStatusItem()
-        setupHotkey()
         setupWindow()
+        registerDefaultHotkeyOnly()
     }
+
+    // MARK: - Mode lifecycle
+
+    private func buildModes() {
+        let prefs = AppPrefs(
+            fontFamily: config.fontFamily,
+            fontSize: config.fontSize,
+            logInput: config.logInput
+        )
+        modes.removeAll()
+        modeOrder.removeAll()
+        for cfg in config.modes {
+            let instance = cfg.toInstanceConfig()
+            do {
+                let mode = try ModeRegistry.shared.make(instance, appPrefs: prefs)
+                modes[mode.id] = mode
+                modeOrder.append(mode.id)
+            } catch {
+                NSLog("SWS: failed to build mode '\(cfg.id)' (type=\(cfg.type)): \(error)")
+            }
+        }
+        if modes[config.defaultMode] == nil, let first = modeOrder.first {
+            NSLog("SWS: defaultMode '\(config.defaultMode)' not found, falling back to '\(first)'")
+            config.defaultMode = first
+        }
+    }
+
+    private var defaultMode: Mode? { modes[config.defaultMode] }
+
+    // MARK: - Window
+
+    private func setupWindow() {
+        let w = ModeHostWindow(width: config.width, height: config.height)
+        w.onSizeChanged = { [weak self] width, height in
+            guard let self = self, self.config.rememberSize else { return }
+            self.config = self.config.withSize(width: width, height: height)
+            self.config.save()
+        }
+        window = w
+    }
+
+    private func showWindow(mode: Mode) {
+        guard let w = window else { return }
+        w.show(mode: mode)
+        registerAllModeHotkeys()
+    }
+
+    private func hideWindow() {
+        window?.hide()
+        registerDefaultHotkeyOnly()
+    }
+
+    private func switchTo(_ mode: Mode) {
+        window?.switchMode(mode)
+    }
+
+    // MARK: - Hotkey routing
+
+    private func registerDefaultHotkeyOnly() {
+        hotkeyManager.unregisterAll()
+        guard let cfg = config.mode(byID: config.defaultMode),
+              let hk = cfg.hotkey else {
+            NSLog("SWS: default mode '\(config.defaultMode)' has no hotkey")
+            return
+        }
+        let ok = hotkeyManager.register(
+            modeID: config.defaultMode,
+            key: hk.key,
+            modifiers: hk.modifiers
+        ) { [weak self] in
+            self?.handleDefaultHotkey()
+        }
+        if !ok {
+            let fb = ShortcutConfig.default
+            NSLog("SWS: falling back to default shortcut \(fb.key)+\(fb.modifiers)")
+            hotkeyManager.register(
+                modeID: config.defaultMode,
+                key: fb.key,
+                modifiers: fb.modifiers
+            ) { [weak self] in
+                self?.handleDefaultHotkey()
+            }
+        }
+    }
+
+    private func registerAllModeHotkeys() {
+        for cfg in config.modes {
+            guard cfg.id != config.defaultMode,
+                  let hk = cfg.hotkey,
+                  !hotkeyManager.isRegistered(modeID: cfg.id) else { continue }
+            let id = cfg.id
+            hotkeyManager.register(
+                modeID: id,
+                key: hk.key,
+                modifiers: hk.modifiers
+            ) { [weak self] in
+                self?.handleModeHotkey(id)
+            }
+        }
+    }
+
+    private func handleDefaultHotkey() {
+        guard let w = window, let def = defaultMode else { return }
+        if !w.isVisible {
+            showWindow(mode: def)
+            return
+        }
+        if w.activeMode === def {
+            hideWindow()
+        } else {
+            switchTo(def)
+        }
+    }
+
+    private func handleModeHotkey(_ id: String) {
+        guard let w = window,
+              let target = modes[id],
+              let def = defaultMode else { return }
+        if w.activeMode === target {
+            switchTo(def)
+        } else {
+            switchTo(target)
+        }
+    }
+
+    // MARK: - Menus
 
     private func setupMainMenu() {
         let mainMenu = NSMenu()
@@ -43,7 +173,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Show/Hide", action: #selector(toggleWindow), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Show/Hide", action: #selector(toggleDefault), keyEquivalent: ""))
+
+        // Mode submenu — populated from config order
+        let modeItem = NSMenuItem(title: "Mode", action: nil, keyEquivalent: "")
+        let modeSubmenu = NSMenu(title: "Mode")
+        for id in modeOrder {
+            guard let mode = modes[id] else { continue }
+            let item = NSMenuItem(
+                title: mode.displayName,
+                action: #selector(switchModeFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            item.representedObject = id
+            item.target = self
+            modeSubmenu.addItem(item)
+        }
+        modeItem.submenu = modeSubmenu
+        menu.addItem(modeItem)
+
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Preferences...", action: #selector(openPreferences), keyEquivalent: ","))
         menu.addItem(NSMenuItem(title: "Reload Config", action: #selector(reloadConfig), keyEquivalent: ""))
@@ -52,43 +200,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
     }
 
-    private func setupHotkey() {
-        let ok = hotkeyManager.register(
-            key: config.shortcut.key,
-            modifiers: config.shortcut.modifiers
-        ) { [weak self] in
-            self?.terminalWindow?.toggle()
-        }
-        if !ok {
-            let fallback = SWSConfig.default.shortcut
-            NSLog("SWS: falling back to default shortcut \(fallback.key)+\(fallback.modifiers)")
-            hotkeyManager.register(
-                key: fallback.key,
-                modifiers: fallback.modifiers
-            ) { [weak self] in
-                self?.terminalWindow?.toggle()
-            }
-        }
+    @objc private func toggleDefault() {
+        handleDefaultHotkey()
     }
 
-    private func setupWindow() {
-        let window = TerminalWindow(config: config)
-        window.onSizeChanged = { [weak self] width, height in
-            guard let self = self, self.config.rememberSize else { return }
-            self.config = self.config.withSize(width: width, height: height)
-            self.config.save()
+    @objc private func switchModeFromMenu(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String,
+              let mode = modes[id] else { return }
+        if window?.isVisible != true {
+            showWindow(mode: mode)
+        } else {
+            switchTo(mode)
         }
-        window.terminalView.onProcessExit = { [weak self] in
-            // Restart process after a brief delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self?.terminalWindow?.terminalView.startProcess()
-            }
-        }
-        terminalWindow = window
-    }
-
-    @objc private func toggleWindow() {
-        terminalWindow?.toggle()
     }
 
     @objc private func openPreferences() {
@@ -103,20 +226,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func applyConfig(_ newConfig: SWSConfig) {
         config = newConfig
-        terminalWindow?.reloadConfig(config)
-        setupHotkey()
+        config.save()
+        buildModes()
+        setupStatusItem()             // rebuilds mode submenu
+        registerDefaultHotkeyOnly()
+        if window?.isVisible == true {
+            registerAllModeHotkeys()
+        }
         NSLog("SWS: config applied")
     }
 
     @objc private func reloadConfig() {
-        config = SWSConfig.load()
-        terminalWindow?.reloadConfig(config)
-        setupHotkey()
+        applyConfig(SWSConfig.load())
         NSLog("SWS: config reloaded")
     }
 
     @objc private func quitApp() {
-        terminalWindow?.terminalView.stopProcess()
+        // Modes can clean up if needed; for now just terminate.
         NSApp.terminate(nil)
     }
 

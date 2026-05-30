@@ -1,8 +1,16 @@
 import AppKit
 
-/// Fullscreen transparent window that captures a single mouse gesture:
-/// click = single pixel pick, drag = rectangular region pick.
-/// Replaces NSColorSampler so we can support drag-to-palette.
+/// Always-on transparent overlay used while Color mode is active.
+/// Click = single-pixel pick, drag = rectangular palette region.
+/// The overlay sits BELOW the sws window in window level, so:
+///   - clicks landing on the sws panel itself go to sws (copy buttons, etc.)
+///   - clicks anywhere else hit the overlay
+///   - on the first real drag movement we orderOut the sws window so it
+///     doesn't block the user's view of what they're selecting; we bring
+///     it back on mouseUp
+///
+/// The overlay stays alive across multiple picks — it's dismissed by
+/// the host (ColorMode) when leaving color mode or hiding sws.
 final class ColorPickerOverlay {
     enum Result {
         case single(NSColor)
@@ -10,66 +18,76 @@ final class ColorPickerOverlay {
         case cancelled
     }
 
-    private var windows: [NSWindow] = []
-    private var captureHandler: ((Result) -> Void)?
-    private static var active: ColorPickerOverlay?
+    private var windows: [OverlayWindow] = []
+    private weak var hostWindow: NSWindow?
+    private var resultHandler: ((Result) -> Void)?
 
-    func present(completion: @escaping (Result) -> Void) {
-        captureHandler = completion
-        ColorPickerOverlay.active = self
+    func present(hostWindow: NSWindow, onResult: @escaping (Result) -> Void) {
+        guard windows.isEmpty else { return }
+        self.hostWindow = hostWindow
+        self.resultHandler = onResult
         for screen in NSScreen.screens {
             let w = OverlayWindow(screen: screen, owner: self)
-            w.orderFrontRegardless()
+            w.orderFront(nil)
             windows.append(w)
         }
-        NSApp.activate(ignoringOtherApps: true)
     }
 
-    func finish(rectOnScreen rect: CGRect?) {
-        let dragThreshold: CGFloat = 4
-        defer { dismiss() }
+    func dismiss() {
+        for w in windows { w.orderOut(nil) }
+        windows.removeAll()
+        hostWindow = nil
+        resultHandler = nil
+    }
 
+    // MARK: - Called by OverlayView
+
+    func dragDidStart() {
+        hostWindow?.orderOut(nil)
+    }
+
+    func finish(rectOnScreen rect: CGRect?, wasDrag: Bool) {
+        defer {
+            if wasDrag {
+                hostWindow?.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
         guard let rect = rect else {
-            captureHandler?(.cancelled)
+            resultHandler?(.cancelled)
             return
         }
-
-        if rect.width < dragThreshold && rect.height < dragThreshold {
-            // Treat as single pixel pick at the click point
+        if !wasDrag {
             let point = CGPoint(x: rect.midX, y: rect.midY)
             if let color = pickColor(at: point) {
-                captureHandler?(.single(color))
+                resultHandler?(.single(color))
             } else {
-                captureHandler?(.cancelled)
+                resultHandler?(.cancelled)
             }
             return
         }
-
         if let img = captureScreenRegion(rect) {
-            captureHandler?(.region(img))
+            resultHandler?(.region(img))
         } else {
-            captureHandler?(.cancelled)
+            resultHandler?(.cancelled)
         }
     }
 
-    private func dismiss() {
-        for w in windows { w.orderOut(nil) }
-        windows.removeAll()
-        captureHandler = nil
-        if ColorPickerOverlay.active === self { ColorPickerOverlay.active = nil }
-    }
+    // MARK: - Capture
 
-    // MARK: - Screen capture
-
-    /// `rect` is in screen coordinates with origin at top-left of the
-    /// primary display (CGRect convention used by Core Graphics).
+    /// Captures `rect` (in global CG screen coordinates) WITHOUT our
+    /// own overlay windows in the result. We orderOut the overlays
+    /// before the capture call, then bring them back after.
     private func captureScreenRegion(_ rect: CGRect) -> CGImage? {
-        return CGWindowListCreateImage(
+        for w in windows { w.orderOut(nil) }
+        let img = CGWindowListCreateImage(
             rect,
-            .optionOnScreenBelowWindow,
+            .optionAll,
             kCGNullWindowID,
-            [.bestResolution]
+            [.bestResolution, .boundsIgnoreFraming]
         )
+        for w in windows { w.orderFront(nil) }
+        return img
     }
 
     private func pickColor(at point: CGPoint) -> NSColor? {
@@ -101,13 +119,17 @@ private final class OverlayWindow: NSPanel {
             defer: false
         )
         self.isReleasedWhenClosed = false
-        self.backgroundColor = NSColor.black.withAlphaComponent(0.05)
+        // Fully transparent — picker is meant to be ambient, not a tint.
+        self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = false
-        self.level = .screenSaver
+        // One level below .floating, so the sws panel (which IS .floating)
+        // stays on top and its copy buttons remain clickable.
+        self.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue - 1)
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         self.ignoresMouseEvents = false
         self.acceptsMouseMovedEvents = true
+        self.hidesOnDeactivate = false
         self.setFrame(screen.frame, display: false)
 
         pickView.frame = NSRect(origin: .zero, size: screen.frame.size)
@@ -117,35 +139,21 @@ private final class OverlayWindow: NSPanel {
         contentView = pickView
     }
 
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-
-    override func cancelOperation(_ sender: Any?) {
-        owner?.finish(rectOnScreen: nil)
-    }
-
-    override func keyDown(with event: NSEvent) {
-        // Escape — already handled via cancelOperation in some configs;
-        // be defensive.
-        if event.keyCode == 53 { // kVK_Escape
-            owner?.finish(rectOnScreen: nil)
-            return
-        }
-        super.keyDown(with: event)
-    }
+    override var canBecomeKey: Bool { false }    // don't steal focus from sws
+    override var canBecomeMain: Bool { false }
 }
 
 private final class OverlayView: NSView {
     weak var owner: ColorPickerOverlay?
-    /// Origin of the screen this view covers, in global screen coords
-    /// (top-left convention via NSScreen.frame.origin in AppKit, which
-    /// is BOTTOM-left — we convert).
     var screenOrigin: NSPoint = .zero
 
     private var startInView: NSPoint?
     private var currentInView: NSPoint?
+    private var dragReported = false
+    private let dragThreshold: CGFloat = 4
 
     override var acceptsFirstResponder: Bool { true }
+
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .crosshair)
     }
@@ -153,25 +161,39 @@ private final class OverlayView: NSView {
     override func mouseDown(with event: NSEvent) {
         startInView = convert(event.locationInWindow, from: nil)
         currentInView = startInView
+        dragReported = false
         needsDisplay = true
     }
 
     override func mouseDragged(with event: NSEvent) {
         currentInView = convert(event.locationInWindow, from: nil)
+        if !dragReported, let start = startInView, let cur = currentInView {
+            let d = hypot(cur.x - start.x, cur.y - start.y)
+            if d > dragThreshold {
+                dragReported = true
+                owner?.dragDidStart()
+            }
+        }
         needsDisplay = true
     }
 
     override func mouseUp(with event: NSEvent) {
+        defer {
+            startInView = nil
+            currentInView = nil
+            dragReported = false
+            needsDisplay = true
+        }
         guard let start = startInView, let end = currentInView else {
-            owner?.finish(rectOnScreen: nil)
+            owner?.finish(rectOnScreen: nil, wasDrag: false)
             return
         }
-        owner?.finish(rectOnScreen: screenRect(from: start, to: end))
+        owner?.finish(rectOnScreen: screenRect(from: start, to: end), wasDrag: dragReported)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        guard let start = startInView, let end = currentInView else { return }
+        guard let start = startInView, let end = currentInView, dragReported else { return }
         let rect = NSRect(
             x: min(start.x, end.x),
             y: min(start.y, end.y),
@@ -188,12 +210,9 @@ private final class OverlayView: NSView {
         path.stroke()
     }
 
-    /// Convert two view-local points (AppKit bottom-left coords) into a
-    /// CGRect in Core Graphics screen coordinates (top-left origin),
-    /// which is what CGWindowListCreateImage expects.
+    /// Convert two view-local points (AppKit bottom-left) into a CGRect
+    /// in global CG coords (top-left origin, relative to primary screen).
     private func screenRect(from start: NSPoint, to end: NSPoint) -> CGRect {
-        // Compose into AppKit screen coordinates by adding the window's
-        // screen origin.
         let s = NSPoint(x: start.x + screenOrigin.x, y: start.y + screenOrigin.y)
         let e = NSPoint(x: end.x + screenOrigin.x, y: end.y + screenOrigin.y)
         let minX = min(s.x, e.x)
@@ -201,8 +220,6 @@ private final class OverlayView: NSView {
         let w = abs(e.x - s.x)
         let h = abs(e.y - s.y)
 
-        // Flip y: NSScreen uses bottom-left, CG uses top-left, relative
-        // to the *primary* screen height.
         guard let primary = NSScreen.screens.first else {
             return CGRect(x: minX, y: minY, width: w, height: h)
         }

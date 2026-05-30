@@ -11,6 +11,7 @@ final class ColorMode: Mode {
     private let historyLimit = 8
 
     private lazy var rootView = ColorView(mode: self)
+    private var overlay: ColorPickerOverlay?
 
     init(id: String, displayName: String) {
         self.id = id
@@ -19,9 +20,54 @@ final class ColorMode: Mode {
 
     func view() -> NSView { rootView }
 
-    func activate() { rootView.refresh() }
+    func activate() {
+        rootView.refresh()
+        presentOverlayIfPossible()
+    }
 
-    func windowDidShow() { rootView.refresh() }
+    func deactivate() {
+        dismissOverlay()
+    }
+
+    func windowDidShow() {
+        rootView.refresh()
+        presentOverlayIfPossible()
+    }
+
+    func windowDidHide() {
+        dismissOverlay()
+    }
+
+    private func presentOverlayIfPossible() {
+        guard let host = rootView.window, host.isVisible else { return }
+        if overlay != nil { return }
+        let ov = ColorPickerOverlay()
+        overlay = ov
+        ov.present(hostWindow: host) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.handle(result: result)
+            }
+        }
+    }
+
+    private func dismissOverlay() {
+        overlay?.dismiss()
+        overlay = nil
+    }
+
+    private func handle(result: ColorPickerOverlay.Result) {
+        switch result {
+        case .single(let color):
+            apply(color: color)
+        case .region(let image):
+            let palette = PaletteExtractor.extract(from: image)
+            if !palette.isEmpty {
+                apply(palette: palette)
+            }
+        case .cancelled:
+            break
+        }
+    }
 
     func apply(color: NSColor) {
         current = color

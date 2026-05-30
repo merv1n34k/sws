@@ -2,7 +2,7 @@ import AppKit
 
 final class ColorView: NSView {
     private let mode: ColorMode
-    private let pickButton = NSButton(title: "Pick (click or drag)", target: nil, action: nil)
+    private let hint = NSTextField(labelWithString: "click anywhere to pick · drag for a palette")
     private let swatch = NSView()
     private let hexField = NSTextField(labelWithString: "—")
     private let rgbField = NSTextField(labelWithString: "—")
@@ -11,7 +11,6 @@ final class ColorView: NSView {
     private let paletteStrip = PaletteStrip()
     private let historyStrip = NSStackView()
     private let historyLabel = NSTextField(labelWithString: "Recent")
-    private var overlay: ColorPickerOverlay?
 
     init(mode: ColorMode) {
         self.mode = mode
@@ -19,11 +18,11 @@ final class ColorView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor(white: 0.1, alpha: 1.0).cgColor
 
-        pickButton.target = self
-        pickButton.action = #selector(pickTapped)
-        pickButton.bezelStyle = .rounded
-        pickButton.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(pickButton)
+        hint.font = NSFont.systemFont(ofSize: 10)
+        hint.textColor = .secondaryLabelColor
+        hint.alignment = .center
+        hint.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(hint)
 
         swatch.wantsLayer = true
         swatch.layer?.backgroundColor = NSColor(white: 0.2, alpha: 1.0).cgColor
@@ -60,10 +59,11 @@ final class ColorView: NSView {
         addSubview(historyStrip)
 
         NSLayoutConstraint.activate([
-            pickButton.topAnchor.constraint(equalTo: topAnchor, constant: 10),
-            pickButton.centerXAnchor.constraint(equalTo: centerXAnchor),
+            hint.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            hint.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            hint.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
 
-            swatch.topAnchor.constraint(equalTo: pickButton.bottomAnchor, constant: 8),
+            swatch.topAnchor.constraint(equalTo: hint.bottomAnchor, constant: 8),
             swatch.centerXAnchor.constraint(equalTo: centerXAnchor),
             swatch.widthAnchor.constraint(equalToConstant: 70),
             swatch.heightAnchor.constraint(equalToConstant: 32),
@@ -146,38 +146,6 @@ final class ColorView: NSView {
             chip.widthAnchor.constraint(equalToConstant: 22).isActive = true
             chip.heightAnchor.constraint(equalToConstant: 22).isActive = true
             historyStrip.addArrangedSubview(chip)
-        }
-    }
-
-    @objc private func pickTapped() {
-        // Hide the host window briefly so it doesn't sit in front of the
-        // user's selection target.
-        let hostWindow = window
-        hostWindow?.orderOut(nil)
-
-        let overlay = ColorPickerOverlay()
-        self.overlay = overlay
-        overlay.present { [weak self] result in
-            DispatchQueue.main.async {
-                hostWindow?.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
-                self?.handle(result: result)
-                self?.overlay = nil
-            }
-        }
-    }
-
-    private func handle(result: ColorPickerOverlay.Result) {
-        switch result {
-        case .single(let color):
-            mode.apply(color: color)
-        case .region(let image):
-            let palette = PaletteExtractor.extract(from: image)
-            if !palette.isEmpty {
-                mode.apply(palette: palette)
-            }
-        case .cancelled:
-            break
         }
     }
 

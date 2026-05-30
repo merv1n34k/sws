@@ -2,13 +2,16 @@ import AppKit
 
 final class ColorView: NSView {
     private let mode: ColorMode
-    private let pickButton = NSButton(title: "Pick Color", target: nil, action: nil)
+    private let pickButton = NSButton(title: "Pick (click or drag)", target: nil, action: nil)
     private let swatch = NSView()
     private let hexField = NSTextField(labelWithString: "—")
     private let rgbField = NSTextField(labelWithString: "—")
     private let hslField = NSTextField(labelWithString: "—")
     private let hsbField = NSTextField(labelWithString: "—")
+    private let paletteStrip = PaletteStrip()
     private let historyStrip = NSStackView()
+    private let historyLabel = NSTextField(labelWithString: "Recent")
+    private var overlay: ColorPickerOverlay?
 
     init(mode: ColorMode) {
         self.mode = mode
@@ -30,6 +33,10 @@ final class ColorView: NSView {
         swatch.translatesAutoresizingMaskIntoConstraints = false
         addSubview(swatch)
 
+        paletteStrip.translatesAutoresizingMaskIntoConstraints = false
+        paletteStrip.onClick = { [weak self] in self?.copyPaletteCSV() }
+        addSubview(paletteStrip)
+
         let hexRow = makeRow(label: "HEX", field: hexField, copyTag: 0)
         let rgbRow = makeRow(label: "RGB", field: rgbField, copyTag: 1)
         let hslRow = makeRow(label: "HSL", field: hslField, copyTag: 2)
@@ -38,9 +45,14 @@ final class ColorView: NSView {
         let formats = NSStackView(views: [hexRow, rgbRow, hslRow, hsbRow])
         formats.orientation = .vertical
         formats.alignment = .leading
-        formats.spacing = 6
+        formats.spacing = 4
         formats.translatesAutoresizingMaskIntoConstraints = false
         addSubview(formats)
+
+        historyLabel.font = NSFont.systemFont(ofSize: 10, weight: .medium)
+        historyLabel.textColor = .secondaryLabelColor
+        historyLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(historyLabel)
 
         historyStrip.orientation = .horizontal
         historyStrip.spacing = 6
@@ -48,19 +60,27 @@ final class ColorView: NSView {
         addSubview(historyStrip)
 
         NSLayoutConstraint.activate([
-            pickButton.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            pickButton.topAnchor.constraint(equalTo: topAnchor, constant: 10),
             pickButton.centerXAnchor.constraint(equalTo: centerXAnchor),
 
-            swatch.topAnchor.constraint(equalTo: pickButton.bottomAnchor, constant: 10),
+            swatch.topAnchor.constraint(equalTo: pickButton.bottomAnchor, constant: 8),
             swatch.centerXAnchor.constraint(equalTo: centerXAnchor),
-            swatch.widthAnchor.constraint(equalToConstant: 80),
-            swatch.heightAnchor.constraint(equalToConstant: 40),
+            swatch.widthAnchor.constraint(equalToConstant: 70),
+            swatch.heightAnchor.constraint(equalToConstant: 32),
 
-            formats.topAnchor.constraint(equalTo: swatch.bottomAnchor, constant: 14),
+            paletteStrip.topAnchor.constraint(equalTo: swatch.bottomAnchor, constant: 10),
+            paletteStrip.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            paletteStrip.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            paletteStrip.heightAnchor.constraint(equalToConstant: 28),
+
+            formats.topAnchor.constraint(equalTo: paletteStrip.bottomAnchor, constant: 10),
             formats.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
             formats.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
 
-            historyStrip.topAnchor.constraint(greaterThanOrEqualTo: formats.bottomAnchor, constant: 12),
+            historyLabel.topAnchor.constraint(greaterThanOrEqualTo: formats.bottomAnchor, constant: 12),
+            historyLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+
+            historyStrip.topAnchor.constraint(equalTo: historyLabel.bottomAnchor, constant: 4),
             historyStrip.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             historyStrip.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12),
             historyStrip.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
@@ -111,6 +131,7 @@ final class ColorView: NSView {
             hslField.stringValue = "—"
             hsbField.stringValue = "—"
         }
+        paletteStrip.colors = mode.palette
         refreshHistory()
     }
 
@@ -122,17 +143,51 @@ final class ColorView: NSView {
         for color in mode.history {
             let chip = ColorChip(color: color)
             chip.onClick = { [weak self] picked in self?.mode.apply(color: picked) }
-            chip.widthAnchor.constraint(equalToConstant: 24).isActive = true
-            chip.heightAnchor.constraint(equalToConstant: 24).isActive = true
+            chip.widthAnchor.constraint(equalToConstant: 22).isActive = true
+            chip.heightAnchor.constraint(equalToConstant: 22).isActive = true
             historyStrip.addArrangedSubview(chip)
         }
     }
 
     @objc private func pickTapped() {
-        NSColorSampler().show { [weak self] color in
-            guard let self = self, let color = color else { return }
-            self.mode.apply(color: color)
+        // Hide the host window briefly so it doesn't sit in front of the
+        // user's selection target.
+        let hostWindow = window
+        hostWindow?.orderOut(nil)
+
+        let overlay = ColorPickerOverlay()
+        self.overlay = overlay
+        overlay.present { [weak self] result in
+            DispatchQueue.main.async {
+                hostWindow?.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                self?.handle(result: result)
+                self?.overlay = nil
+            }
         }
+    }
+
+    private func handle(result: ColorPickerOverlay.Result) {
+        switch result {
+        case .single(let color):
+            mode.apply(color: color)
+        case .region(let image):
+            let palette = PaletteExtractor.extract(from: image)
+            if !palette.isEmpty {
+                mode.apply(palette: palette)
+            }
+        case .cancelled:
+            break
+        }
+    }
+
+    private func copyPaletteCSV() {
+        let csv = mode.paletteCSV()
+        guard !csv.isEmpty else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(csv, forType: .string)
+        paletteStrip.flashCopied()
     }
 
     @objc private func copyTapped(_ sender: NSButton) {
@@ -151,7 +206,95 @@ final class ColorView: NSView {
     }
 }
 
-private final class ColorChip: NSView {
+// MARK: - Palette strip
+
+final class PaletteStrip: NSView {
+    var onClick: (() -> Void)?
+    var colors: [NSColor] = [] {
+        didSet { needsDisplay = true }
+    }
+
+    private let placeholder = NSTextField(labelWithString: "drag on screen to extract a palette")
+    private let copiedLabel = NSTextField(labelWithString: "copied")
+    private var hideCopiedTimer: Timer?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        layer?.backgroundColor = NSColor(white: 0.15, alpha: 1.0).cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor(white: 0.25, alpha: 1.0).cgColor
+
+        placeholder.font = NSFont.systemFont(ofSize: 10)
+        placeholder.textColor = .secondaryLabelColor
+        placeholder.alignment = .center
+        placeholder.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(placeholder)
+        NSLayoutConstraint.activate([
+            placeholder.centerXAnchor.constraint(equalTo: centerXAnchor),
+            placeholder.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+
+        copiedLabel.font = NSFont.systemFont(ofSize: 10, weight: .medium)
+        copiedLabel.textColor = .white
+        copiedLabel.alignment = .center
+        copiedLabel.isHidden = true
+        copiedLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(copiedLabel)
+        NSLayoutConstraint.activate([
+            copiedLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            copiedLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        if colors.isEmpty { return }
+        let cellWidth = bounds.width / CGFloat(colors.count)
+        for (i, color) in colors.enumerated() {
+            let rect = NSRect(
+                x: CGFloat(i) * cellWidth,
+                y: 0,
+                width: cellWidth,
+                height: bounds.height
+            )
+            color.setFill()
+            rect.fill()
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        placeholder.isHidden = !colors.isEmpty
+        needsDisplay = true
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard !colors.isEmpty else { return }
+        onClick?()
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: colors.isEmpty ? .arrow : .pointingHand)
+    }
+
+    func flashCopied() {
+        copiedLabel.stringValue = "copied!"
+        copiedLabel.isHidden = false
+        hideCopiedTimer?.invalidate()
+        hideCopiedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+            self?.copiedLabel.isHidden = true
+        }
+    }
+}
+
+// MARK: - Small history chip
+
+final class ColorChip: NSView {
     var onClick: ((NSColor) -> Void)?
     private let color: NSColor
 

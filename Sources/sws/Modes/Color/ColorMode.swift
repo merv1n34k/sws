@@ -3,9 +3,10 @@ import AppKit
 final class ColorMode: Mode {
     let id: String
     let displayName: String
-    var preferredSize: NSSize? = NSSize(width: 380, height: 320)
+    var preferredSize: NSSize? = NSSize(width: 380, height: 360)
 
     private(set) var current: NSColor?
+    private(set) var palette: [NSColor] = []
     private(set) var history: [NSColor] = []
     private let historyLimit = 8
 
@@ -24,6 +25,21 @@ final class ColorMode: Mode {
 
     func apply(color: NSColor) {
         current = color
+        palette = []   // a single pick clears the palette
+        recordInHistory(color)
+        rootView.refresh()
+    }
+
+    func apply(palette: [NSColor]) {
+        self.palette = palette
+        current = palette.first
+        if let first = palette.first {
+            recordInHistory(first)
+        }
+        rootView.refresh()
+    }
+
+    private func recordInHistory(_ color: NSColor) {
         if let existing = history.firstIndex(where: { ColorFormat.hex($0) == ColorFormat.hex(color) }) {
             history.remove(at: existing)
         }
@@ -31,7 +47,13 @@ final class ColorMode: Mode {
         if history.count > historyLimit {
             history.removeLast(history.count - historyLimit)
         }
-        rootView.refresh()
+    }
+
+    /// CSV of the active palette (or the single current color if no
+    /// palette is active). Used by the "click palette to copy" gesture.
+    func paletteCSV() -> String {
+        let colors = palette.isEmpty ? (current.map { [$0] } ?? []) : palette
+        return colors.map { ColorFormat.hex($0) }.joined(separator: ",")
     }
 }
 

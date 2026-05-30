@@ -4,7 +4,7 @@
 func registerBuiltInModes() {
     ModeRegistry.shared.register(TerminalModeFactory.self)
     ModeRegistry.shared.register(TimerModeFactory.self)
-    ModeRegistry.shared.register(OklabsModeFactory.self)
-    // Back-compat: configs that still say "color" map to oklabs.
-    ModeRegistry.shared.registerAlias("color", to: OklabsModeFactory.typeId)
+    ModeRegistry.shared.register(ColorModeFactory.self)
+    // Back-compat for the brief 'oklabs' typeId — maps to 'color'.
+    ModeRegistry.shared.registerAlias("oklabs", to: ColorModeFactory.typeId)
 }

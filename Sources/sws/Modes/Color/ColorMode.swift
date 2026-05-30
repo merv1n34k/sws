@@ -1,6 +1,6 @@
 import AppKit
 
-final class OklabsMode: Mode {
+final class ColorMode: Mode {
     let id: String
     let displayName: String
     var preferredSize: NSSize? = NSSize(width: 380, height: 360)
@@ -10,7 +10,7 @@ final class OklabsMode: Mode {
     private(set) var history: [NSColor] = []
     private let historyLimit = 8
 
-    private lazy var rootView = OklabsView(mode: self)
+    private lazy var rootView = ColorView(mode: self)
 
     init(id: String, displayName: String) {
         self.id = id
@@ -57,12 +57,12 @@ final class OklabsMode: Mode {
     }
 }
 
-enum OklabsModeFactory: ModeFactory {
-    static let typeId = "oklabs"
+enum ColorModeFactory: ModeFactory {
+    static let typeId = "color"
 
     static func make(instance: ModeInstanceConfig, appPrefs: AppPrefs) throws -> Mode {
         let displayName = (instance.raw["displayName"] as? String) ?? instance.id.capitalized
-        return OklabsMode(id: instance.id, displayName: displayName)
+        return ColorMode(id: instance.id, displayName: displayName)
     }
 }
 

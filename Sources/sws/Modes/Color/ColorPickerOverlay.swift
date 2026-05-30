@@ -3,7 +3,7 @@ import AppKit
 /// Fullscreen transparent window that captures a single mouse gesture:
 /// click = single pixel pick, drag = rectangular region pick.
 /// Replaces NSColorSampler so we can support drag-to-palette.
-final class OklabsPickerOverlay {
+final class ColorPickerOverlay {
     enum Result {
         case single(NSColor)
         case region(CGImage)
@@ -12,11 +12,11 @@ final class OklabsPickerOverlay {
 
     private var windows: [NSWindow] = []
     private var captureHandler: ((Result) -> Void)?
-    private static var active: OklabsPickerOverlay?
+    private static var active: ColorPickerOverlay?
 
     func present(completion: @escaping (Result) -> Void) {
         captureHandler = completion
-        OklabsPickerOverlay.active = self
+        ColorPickerOverlay.active = self
         for screen in NSScreen.screens {
             let w = OverlayWindow(screen: screen, owner: self)
             w.orderFrontRegardless()
@@ -56,7 +56,7 @@ final class OklabsPickerOverlay {
         for w in windows { w.orderOut(nil) }
         windows.removeAll()
         captureHandler = nil
-        if OklabsPickerOverlay.active === self { OklabsPickerOverlay.active = nil }
+        if ColorPickerOverlay.active === self { ColorPickerOverlay.active = nil }
     }
 
     // MARK: - Screen capture
@@ -88,10 +88,10 @@ final class OklabsPickerOverlay {
 // MARK: - Overlay window
 
 private final class OverlayWindow: NSPanel {
-    private weak var owner: OklabsPickerOverlay?
+    private weak var owner: ColorPickerOverlay?
     private let pickView: OverlayView
 
-    init(screen: NSScreen, owner: OklabsPickerOverlay) {
+    init(screen: NSScreen, owner: ColorPickerOverlay) {
         self.owner = owner
         self.pickView = OverlayView()
         super.init(
@@ -136,7 +136,7 @@ private final class OverlayWindow: NSPanel {
 }
 
 private final class OverlayView: NSView {
-    weak var owner: OklabsPickerOverlay?
+    weak var owner: ColorPickerOverlay?
     /// Origin of the screen this view covers, in global screen coords
     /// (top-left convention via NSScreen.frame.origin in AppKit, which
     /// is BOTTOM-left — we convert).

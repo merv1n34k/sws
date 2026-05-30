@@ -2,7 +2,7 @@
 
 Lightweight native macOS menu bar app that opens a floating window on a
 global hotkey. The window hosts a **mode**: by default a terminal
-running `bc`, but Timer and Oklabs (color picker + palette extractor) modes
+running `bc`, but Timer and Color (picker + palette extractor) modes
 ship in the box, and new modes drop in as source files under
 `Sources/sws/Modes/`.
 
@@ -16,7 +16,7 @@ ship in the box, and new modes drop in as source files under
 - **Built-in modes**:
   - **Terminal** — any program, with full emulation via [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) (arrow keys, history, colors, readline). Configure one terminal mode per command (calc, python, ruby, …).
   - **Timer** — stopwatch, countdown (`5m`, `1h30m`, `1:30:00`), world clock with UTC offsets or IANA zones. Countdown completion fires a system notification even if the window is hidden.
-  - **Oklabs** — color picker + drag-to-extract palette. Click a pixel for a single color, or drag a rectangle and the captured region is clustered (sRGB → Oklab → k-means++) into 8 dominant colors. HEX/RGB/HSL/HSB rows with per-format copy; clicking the palette strip copies the whole palette as a hex CSV. The clusterer is a minimal local take on [Okolors](https://github.com/Ivordir/Okolors).
+  - **Color** — color picker + drag-to-extract palette. Click a pixel for a single color, or drag a rectangle and the captured region is clustered (sRGB → Oklab → k-means++) into 8 dominant colors. HEX/RGB/HSL/HSB rows with per-format copy; clicking the palette strip copies the whole palette as a hex CSV. The clusterer is a minimal local take on [Okolors](https://github.com/Ivordir/Okolors).
 - **Per-mode hotkeys** are intercepted only while sws is open — pressing them outside passes through to whatever app is frontmost.
 - **Borderless rounded window** that stays on top of all apps; **Escape** hides; **Option+Drag** moves.
 - **Tmux-style copy** in terminal mode: select text and it's copied on release.
@@ -88,7 +88,7 @@ it doesn't trigger anything when sws is hidden.
     },
     {
       "id": "color",
-      "type": "oklabs",
+      "type": "color",
       "hotkey": { "key": "c", "modifiers": ["shift", "option"] }
     }
   ],

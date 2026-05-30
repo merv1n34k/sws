@@ -1,47 +1,48 @@
+import AppKit
 import CoreGraphics
 
-/// Reads RGB bytes from CGImages by re-rendering into a known sRGB
-/// context. Going through an explicit sRGB context performs the color
-/// space conversion CG knows about — without it, captures from a P3
-/// display would come back in the display's space and we'd
-/// misinterpret the bytes as sRGB.
-///
-/// The output byte order is always [R, G, B, A], premultipliedLast.
+/// Reads pixel data out of a CGImage as color-managed sRGB values.
+/// Delegates to NSBitmapImageRep + NSColor.usingColorSpace so AppKit
+/// handles the source byte order, premultiplication, and color-space
+/// matching — the hand-rolled CGContext path that lived here before
+/// produced garbage values on at least some configurations.
 enum PixelReader {
-    /// Returns the first pixel of the image as sRGB bytes.
+    /// Returns the first (top-left) pixel of `image` as sRGB bytes.
     static func firstPixel(of image: CGImage) -> (r: UInt8, g: UInt8, b: UInt8)? {
-        guard let bytes = render(image: image, width: 1, height: 1) else { return nil }
-        return (bytes[0], bytes[1], bytes[2])
+        return pixel(of: image, atX: 0, y: 0)
     }
 
-    /// Renders the image at its native size into an sRGB RGBA buffer
-    /// and returns the raw bytes. Caller knows the dimensions.
-    static func rgbaBytes(of image: CGImage) -> [UInt8]? {
-        return render(image: image, width: image.width, height: image.height)
+    static func pixel(of image: CGImage, atX x: Int, y: Int) -> (r: UInt8, g: UInt8, b: UInt8)? {
+        let rep = NSBitmapImageRep(cgImage: image)
+        guard let raw = rep.colorAt(x: x, y: y),
+              let srgb = raw.usingColorSpace(.sRGB) else { return nil }
+        return (
+            UInt8(clamping: Int(round(srgb.redComponent * 255))),
+            UInt8(clamping: Int(round(srgb.greenComponent * 255))),
+            UInt8(clamping: Int(round(srgb.blueComponent * 255)))
+        )
     }
 
-    private static func render(image: CGImage, width: Int, height: Int) -> [UInt8]? {
-        guard width > 0, height > 0 else { return nil }
-        let bytesPerRow = width * 4
-        guard let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
-        var data = [UInt8](repeating: 0, count: bytesPerRow * height)
-        let bitmapInfo: UInt32 =
-            CGImageAlphaInfo.premultipliedLast.rawValue
-            | CGBitmapInfo.byteOrder32Big.rawValue
-
-        let ok = data.withUnsafeMutableBytes { ptr -> Bool in
-            guard let ctx = CGContext(
-                data: ptr.baseAddress,
-                width: width,
-                height: height,
-                bitsPerComponent: 8,
-                bytesPerRow: bytesPerRow,
-                space: space,
-                bitmapInfo: bitmapInfo
-            ) else { return false }
-            ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-            return true
+    /// Returns the rendered image as sRGB RGBA bytes, one pixel at a time
+    /// via NSBitmapImageRep. Slower than a single CGContext draw but
+    /// reliable across all source formats — palette extraction only needs
+    /// ≤10k samples so the cost is negligible.
+    static func sRGBPixels(of image: CGImage) -> [(r: UInt8, g: UInt8, b: UInt8)] {
+        let rep = NSBitmapImageRep(cgImage: image)
+        var out: [(UInt8, UInt8, UInt8)] = []
+        out.reserveCapacity(rep.pixelsWide * rep.pixelsHigh)
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide {
+                if let raw = rep.colorAt(x: x, y: y),
+                   let srgb = raw.usingColorSpace(.sRGB) {
+                    out.append((
+                        UInt8(clamping: Int(round(srgb.redComponent * 255))),
+                        UInt8(clamping: Int(round(srgb.greenComponent * 255))),
+                        UInt8(clamping: Int(round(srgb.blueComponent * 255)))
+                    ))
+                }
+            }
         }
-        return ok ? data : nil
+        return out
     }
 }

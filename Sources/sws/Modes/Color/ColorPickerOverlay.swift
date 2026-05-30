@@ -101,12 +101,16 @@ final class ColorPickerOverlay {
 
     private func pickColor(at point: CGPoint) -> NSColor? {
         let captureRect = CGRect(x: point.x, y: point.y, width: 1, height: 1)
-        guard let img = captureScreenRegion(captureRect),
-              let rgb = PixelReader.firstPixel(of: img) else { return nil }
-        if let csName = img.colorSpace?.name {
-            NSLog("SWS picker: cg(%.0f,%.0f) image cs=%@ rgb=(%d,%d,%d)",
-                  point.x, point.y, csName as String, rgb.r, rgb.g, rgb.b)
+        guard let img = captureScreenRegion(captureRect) else {
+            print("SWS picker: capture at (\(point.x), \(point.y)) returned nil")
+            return nil
         }
+        guard let rgb = PixelReader.firstPixel(of: img) else {
+            print("SWS picker: pixel read failed (image \(img.width)x\(img.height))")
+            return nil
+        }
+        let csName = (img.colorSpace?.name as String?) ?? "unknown"
+        print("SWS picker: cg(\(Int(point.x)),\(Int(point.y))) image=\(img.width)x\(img.height) cs=\(csName) -> sRGB(\(rgb.r),\(rgb.g),\(rgb.b))")
         return NSColor(
             srgbRed: CGFloat(rgb.r) / 255,
             green: CGFloat(rgb.g) / 255,

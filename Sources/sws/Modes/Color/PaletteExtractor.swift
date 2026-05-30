@@ -31,19 +31,14 @@ enum PaletteExtractor {
     /// Samples up to `cap` pixels uniformly from the image. Returns
     /// raw 8-bit sRGB triples (color-managed via PixelReader).
     private static func samplePixels(image: CGImage, max cap: Int) -> [(r: UInt8, g: UInt8, b: UInt8)] {
-        let width = image.width
-        let height = image.height
-        let total = width * height
-        guard total > 0 else { return [] }
-        guard let data = PixelReader.rgbaBytes(of: image) else { return [] }
-
-        let step = max(1, total / cap)
+        let pixels = PixelReader.sRGBPixels(of: image)
+        guard !pixels.isEmpty else { return [] }
+        let step = max(1, pixels.count / cap)
         var out: [(UInt8, UInt8, UInt8)] = []
-        out.reserveCapacity(min(total, cap))
+        out.reserveCapacity(min(pixels.count, cap))
         var idx = 0
-        while idx < total {
-            let off = idx * 4
-            out.append((data[off], data[off + 1], data[off + 2]))
+        while idx < pixels.count {
+            out.append(pixels[idx])
             idx += step
         }
         return out

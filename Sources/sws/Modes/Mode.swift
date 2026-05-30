@@ -80,19 +80,28 @@ enum ModeError: Error, CustomStringConvertible {
 final class ModeRegistry {
     static let shared = ModeRegistry()
     private var factories: [String: ModeFactory.Type] = [:]
+    private var aliases: [String: String] = [:]
 
     func register(_ factory: ModeFactory.Type) {
         factories[factory.typeId] = factory
     }
 
+    /// Maps a legacy/alternate typeId to a canonical one. Used to keep
+    /// old configs working after a mode is renamed.
+    func registerAlias(_ alias: String, to canonical: String) {
+        aliases[alias] = canonical
+    }
+
     func make(_ instance: ModeInstanceConfig, appPrefs: AppPrefs) throws -> Mode {
-        guard let factory = factories[instance.typeId] else {
+        let resolved = aliases[instance.typeId] ?? instance.typeId
+        guard let factory = factories[resolved] else {
             throw ModeError.unknownType(instance.typeId)
         }
         return try factory.make(instance: instance, appPrefs: appPrefs)
     }
 
     func has(typeId: String) -> Bool {
-        factories[typeId] != nil
+        let resolved = aliases[typeId] ?? typeId
+        return factories[resolved] != nil
     }
 }

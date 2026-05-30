@@ -3,7 +3,7 @@ import AppKit
 /// Fullscreen transparent window that captures a single mouse gesture:
 /// click = single pixel pick, drag = rectangular region pick.
 /// Replaces NSColorSampler so we can support drag-to-palette.
-final class ColorPickerOverlay {
+final class OklabsPickerOverlay {
     enum Result {
         case single(NSColor)
         case region(CGImage)
@@ -12,11 +12,11 @@ final class ColorPickerOverlay {
 
     private var windows: [NSWindow] = []
     private var captureHandler: ((Result) -> Void)?
-    private static var active: ColorPickerOverlay?
+    private static var active: OklabsPickerOverlay?
 
     func present(completion: @escaping (Result) -> Void) {
         captureHandler = completion
-        ColorPickerOverlay.active = self
+        OklabsPickerOverlay.active = self
         for screen in NSScreen.screens {
             let w = OverlayWindow(screen: screen, owner: self)
             w.orderFrontRegardless()
@@ -56,7 +56,7 @@ final class ColorPickerOverlay {
         for w in windows { w.orderOut(nil) }
         windows.removeAll()
         captureHandler = nil
-        if ColorPickerOverlay.active === self { ColorPickerOverlay.active = nil }
+        if OklabsPickerOverlay.active === self { OklabsPickerOverlay.active = nil }
     }
 
     // MARK: - Screen capture
@@ -75,38 +75,23 @@ final class ColorPickerOverlay {
     private func pickColor(at point: CGPoint) -> NSColor? {
         let captureRect = CGRect(x: point.x, y: point.y, width: 1, height: 1)
         guard let img = captureScreenRegion(captureRect),
-              let data = img.dataProvider?.data,
-              let bytes = CFDataGetBytePtr(data) else { return nil }
-        // CGImage may have arbitrary bytes per row; we asked for 1x1
-        // so the first pixel is at offset 0. Pixel format from
-        // CGWindowListCreateImage on macOS: BGRA (premultiplied first).
-        let info = img.bitmapInfo
-        let alphaInfo = CGImageAlphaInfo(rawValue: info.rawValue & CGBitmapInfo.alphaInfoMask.rawValue)
-        let isBGRA = info.contains(.byteOrder32Little)
-        let r: CGFloat
-        let g: CGFloat
-        let b: CGFloat
-        if isBGRA {
-            b = CGFloat(bytes[0]) / 255
-            g = CGFloat(bytes[1]) / 255
-            r = CGFloat(bytes[2]) / 255
-        } else {
-            r = CGFloat(bytes[0]) / 255
-            g = CGFloat(bytes[1]) / 255
-            b = CGFloat(bytes[2]) / 255
-        }
-        _ = alphaInfo
-        return NSColor(srgbRed: r, green: g, blue: b, alpha: 1)
+              let rgb = PixelReader.firstPixel(of: img) else { return nil }
+        return NSColor(
+            srgbRed: CGFloat(rgb.r) / 255,
+            green: CGFloat(rgb.g) / 255,
+            blue: CGFloat(rgb.b) / 255,
+            alpha: 1
+        )
     }
 }
 
 // MARK: - Overlay window
 
 private final class OverlayWindow: NSPanel {
-    private weak var owner: ColorPickerOverlay?
+    private weak var owner: OklabsPickerOverlay?
     private let pickView: OverlayView
 
-    init(screen: NSScreen, owner: ColorPickerOverlay) {
+    init(screen: NSScreen, owner: OklabsPickerOverlay) {
         self.owner = owner
         self.pickView = OverlayView()
         super.init(
@@ -151,7 +136,7 @@ private final class OverlayWindow: NSPanel {
 }
 
 private final class OverlayView: NSView {
-    weak var owner: ColorPickerOverlay?
+    weak var owner: OklabsPickerOverlay?
     /// Origin of the screen this view covers, in global screen coords
     /// (top-left convention via NSScreen.frame.origin in AppKit, which
     /// is BOTTOM-left — we convert).

@@ -1,7 +1,7 @@
 import AppKit
 
-final class ColorView: NSView {
-    private let mode: ColorMode
+final class OklabsView: NSView {
+    private let mode: OklabsMode
     private let pickButton = NSButton(title: "Pick (click or drag)", target: nil, action: nil)
     private let swatch = NSView()
     private let hexField = NSTextField(labelWithString: "—")
@@ -11,9 +11,9 @@ final class ColorView: NSView {
     private let paletteStrip = PaletteStrip()
     private let historyStrip = NSStackView()
     private let historyLabel = NSTextField(labelWithString: "Recent")
-    private var overlay: ColorPickerOverlay?
+    private var overlay: OklabsPickerOverlay?
 
-    init(mode: ColorMode) {
+    init(mode: OklabsMode) {
         self.mode = mode
         super.init(frame: .zero)
         wantsLayer = true
@@ -155,7 +155,7 @@ final class ColorView: NSView {
         let hostWindow = window
         hostWindow?.orderOut(nil)
 
-        let overlay = ColorPickerOverlay()
+        let overlay = OklabsPickerOverlay()
         self.overlay = overlay
         overlay.present { [weak self] result in
             DispatchQueue.main.async {
@@ -167,7 +167,7 @@ final class ColorView: NSView {
         }
     }
 
-    private func handle(result: ColorPickerOverlay.Result) {
+    private func handle(result: OklabsPickerOverlay.Result) {
         switch result {
         case .single(let color):
             mode.apply(color: color)

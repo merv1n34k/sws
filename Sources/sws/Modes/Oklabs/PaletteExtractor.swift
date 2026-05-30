@@ -29,35 +29,13 @@ enum PaletteExtractor {
     }
 
     /// Samples up to `cap` pixels uniformly from the image. Returns
-    /// raw 8-bit RGB triples.
+    /// raw 8-bit sRGB triples (color-managed via PixelReader).
     private static func samplePixels(image: CGImage, max cap: Int) -> [(r: UInt8, g: UInt8, b: UInt8)] {
         let width = image.width
         let height = image.height
         let total = width * height
         guard total > 0 else { return [] }
-
-        // Rendering into a known-format context lets us read pixels
-        // without worrying about the source's byte order/alpha.
-        let bytesPerRow = width * 4
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        var data = [UInt8](repeating: 0, count: bytesPerRow * height)
-        let bitmapInfo: UInt32 =
-            CGImageAlphaInfo.premultipliedLast.rawValue
-            | CGBitmapInfo.byteOrder32Big.rawValue
-
-        guard let ctx = data.withUnsafeMutableBytes({ ptr -> CGContext? in
-            CGContext(
-                data: ptr.baseAddress,
-                width: width,
-                height: height,
-                bitsPerComponent: 8,
-                bytesPerRow: bytesPerRow,
-                space: colorSpace,
-                bitmapInfo: bitmapInfo
-            )
-        }) else { return [] }
-
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let data = PixelReader.rgbaBytes(of: image) else { return [] }
 
         let step = max(1, total / cap)
         var out: [(UInt8, UInt8, UInt8)] = []

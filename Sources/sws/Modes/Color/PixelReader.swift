@@ -67,6 +67,22 @@ enum PixelReader {
         return (r, g, b)
     }
 
+    /// Returns the first `count` bytes of the image's data provider as
+    /// hex, for diagnostic logging. Helps confirm what the underlying
+    /// bytes look like before we interpret them.
+    static func firstBytesHex(of image: CGImage, count: Int) -> String {
+        guard let provider = image.dataProvider,
+              let data = provider.data,
+              let bytes = CFDataGetBytePtr(data) else { return "<no data>" }
+        let n = min(count, CFDataGetLength(data))
+        var out = ""
+        for i in 0..<n {
+            if i > 0 { out += " " }
+            out += String(format: "%02X", bytes[i])
+        }
+        return out
+    }
+
     /// Returns every pixel of the image as native-space RGB triples.
     /// Used by PaletteExtractor; for small samples the per-pixel
     /// branching here is fine.

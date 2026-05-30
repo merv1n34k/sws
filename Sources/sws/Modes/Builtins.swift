@@ -3,7 +3,7 @@
 /// directly from their own source file.
 func registerBuiltInModes() {
     ModeRegistry.shared.register(TerminalModeFactory.self)
+    ModeRegistry.shared.register(TimerModeFactory.self)
     // Populated as each built-in mode lands:
-    //   ModeRegistry.shared.register(TimerModeFactory.self)
     //   ModeRegistry.shared.register(ColorModeFactory.self)
 }

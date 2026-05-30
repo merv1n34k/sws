@@ -53,11 +53,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupHotkey() {
-        hotkeyManager.register(
+        let ok = hotkeyManager.register(
             key: config.shortcut.key,
             modifiers: config.shortcut.modifiers
         ) { [weak self] in
             self?.terminalWindow?.toggle()
+        }
+        if !ok {
+            let fallback = SWSConfig.default.shortcut
+            NSLog("SWS: falling back to default shortcut \(fallback.key)+\(fallback.modifiers)")
+            hotkeyManager.register(
+                key: fallback.key,
+                modifiers: fallback.modifiers
+            ) { [weak self] in
+                self?.terminalWindow?.toggle()
+            }
         }
     }
 

@@ -3,38 +3,28 @@ import AppKit
 
 final class HotkeyManager {
     private var hotkeyRef: EventHotKeyRef?
+    private var handlerRef: EventHandlerRef?
     private var callback: (() -> Void)?
 
-    // Singleton so the C callback can reach us
-    static var shared: HotkeyManager?
-
-    init() {
-        HotkeyManager.shared = self
+    deinit {
+        unregister()
+        if let h = handlerRef {
+            RemoveEventHandler(h)
+        }
     }
 
-    func register(key: String, modifiers: [String], callback: @escaping () -> Void) {
+    @discardableResult
+    func register(key: String, modifiers: [String], callback: @escaping () -> Void) -> Bool {
         unregister()
+
+        guard let keyCode = HotkeyManager.virtualKeyCode(for: key) else {
+            NSLog("SWS: unknown hotkey key '\(key)' — not registering")
+            return false
+        }
+        let mods = HotkeyManager.carbonModifiers(from: modifiers)
         self.callback = callback
 
-        let keyCode = virtualKeyCode(for: key)
-        let mods = carbonModifiers(from: modifiers)
-
-        var eventType = EventTypeSpec(
-            eventClass: OSType(kEventClassKeyboard),
-            eventKind: UInt32(kEventHotKeyPressed)
-        )
-
-        InstallEventHandler(
-            GetApplicationEventTarget(),
-            { _, event, _ -> OSStatus in
-                HotkeyManager.shared?.callback?()
-                return noErr
-            },
-            1,
-            &eventType,
-            nil,
-            nil
-        )
+        installHandlerIfNeeded()
 
         let hotkeyID = EventHotKeyID(signature: 0x5357_5348, id: 1) // "SWSH"
         var ref: EventHotKeyRef?
@@ -50,8 +40,10 @@ final class HotkeyManager {
         if status == noErr {
             hotkeyRef = ref
             NSLog("SWS: hotkey registered (key=\(key), mods=\(modifiers))")
+            return true
         } else {
             NSLog("SWS: failed to register hotkey: \(status)")
+            return false
         }
     }
 
@@ -62,7 +54,31 @@ final class HotkeyManager {
         }
     }
 
-    private func carbonModifiers(from names: [String]) -> Int {
+    private func installHandlerIfNeeded() {
+        guard handlerRef == nil else { return }
+
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        let userData = Unmanaged.passUnretained(self).toOpaque()
+
+        InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, _, userData -> OSStatus in
+                guard let userData = userData else { return noErr }
+                let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
+                manager.callback?()
+                return noErr
+            },
+            1,
+            &eventType,
+            userData,
+            &handlerRef
+        )
+    }
+
+    static func carbonModifiers(from names: [String]) -> Int {
         var mods = 0
         for name in names {
             switch name.lowercased() {
@@ -81,7 +97,7 @@ final class HotkeyManager {
         return mods
     }
 
-    private func virtualKeyCode(for key: String) -> Int {
+    static func virtualKeyCode(for key: String) -> Int? {
         let map: [String: Int] = [
             "a": 0x00, "s": 0x01, "d": 0x02, "f": 0x03, "h": 0x04,
             "g": 0x05, "z": 0x06, "x": 0x07, "c": 0x08, "v": 0x09,
@@ -95,6 +111,6 @@ final class HotkeyManager {
             "[": 0x21, "]": 0x1E, "\\": 0x2A, ";": 0x29, "'": 0x27,
             ",": 0x2B, ".": 0x2F, "/": 0x2C,
         ]
-        return map[key.lowercased()] ?? 0x01 // default to 's'
+        return map[key.lowercased()]
     }
 }

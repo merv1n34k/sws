@@ -34,8 +34,17 @@ final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
     private var config: SWSConfig
     private var processRunning = false
     private var dragOrigin: NSPoint?
+
+    // Logging
     private var logHandle: FileHandle?
     private var pendingSeparator: String?
+    private let logQueue = DispatchQueue(label: "sws.log", qos: .utility)
+
+    // Respawn governor
+    private var restartTimestamps: [Date] = []
+    private let restartLimit = 3
+    private let restartWindow: TimeInterval = 10
+    private var restartHalted = false
 
     var isProcessRunning: Bool { processRunning }
     var onProcessExit: (() -> Void)?
@@ -96,16 +105,26 @@ final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
         let font = NSFont(name: config.fontFamily, size: config.fontSize)
             ?? NSFont.monospacedSystemFont(ofSize: config.fontSize, weight: .regular)
         terminal.font = font
+        if config.logInput && terminal.onDataReceived == nil {
+            setupLogging()
+        }
+        // Reset respawn governor when user touches preferences
+        restartTimestamps.removeAll()
+        restartHalted = false
     }
 
-    private var lastLoggedLine = 0
-    private var logDebounce: DispatchWorkItem?
+    /// Called by AppDelegate when the window is shown — resets the respawn cap
+    /// so the user gets a fresh allowance per session.
+    func resetRestartGovernor() {
+        restartTimestamps.removeAll()
+        restartHalted = false
+    }
 
     // MARK: - Session logging
 
     private func setupLogging() {
-        terminal.onDataReceived = { [weak self] _ in
-            self?.scheduleLogFlush()
+        terminal.onDataReceived = { [weak self] data in
+            self?.appendToLog(data)
         }
     }
 
@@ -113,50 +132,85 @@ final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
         guard config.logInput else { return }
         let df = DateFormatter()
         df.dateFormat = "yy/MM/dd HH:mm:ss"
-        pendingSeparator = "\n[\(df.string(from: Date()))]\n"
+        let sep = "\n[\(df.string(from: Date()))]\n"
+        logQueue.async { [weak self] in
+            self?.pendingSeparator = sep
+        }
     }
 
-    private func scheduleLogFlush() {
-        logDebounce?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            self?.flushNewLines()
-        }
-        logDebounce = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
-    }
+    private func appendToLog(_ data: Data) {
+        logQueue.async { [weak self] in
+            guard let self = self else { return }
+            let cleaned = TerminalView.stripAnsi(data)
+            guard !cleaned.isEmpty || self.pendingSeparator != nil else { return }
 
-    private func flushNewLines() {
-        let term = terminal.getTerminal()
-        let topRow = term.getTopVisibleRow()
-        let currentLine = topRow + term.getCursorLocation().y
-
-        if currentLine < lastLoggedLine { lastLoggedLine = 0 }
-        guard currentLine > lastLoggedLine else { return }
-
-        if let sep = pendingSeparator, let sepData = sep.data(using: .utf8) {
-            pendingSeparator = nil
-            writeToLog(sepData)
-        }
-
-        for i in lastLoggedLine ..< currentLine {
-            if let line = term.getLine(row: i - topRow) {
-                let text = line.translateToString(trimRight: true)
-                writeToLog(Data((text + "\n").utf8))
+            self.ensureLogHandle()
+            if let sep = self.pendingSeparator, let sepData = sep.data(using: .utf8) {
+                self.pendingSeparator = nil
+                self.logHandle?.write(sepData)
+            }
+            if !cleaned.isEmpty {
+                self.logHandle?.write(cleaned)
             }
         }
-        lastLoggedLine = currentLine
     }
 
-    private func writeToLog(_ data: Data) {
-        if logHandle == nil {
-            let path = SWSConfig.logFile.path
-            if !FileManager.default.fileExists(atPath: path) {
-                FileManager.default.createFile(atPath: path, contents: nil)
-            }
-            logHandle = FileHandle(forWritingAtPath: path)
-            logHandle?.seekToEndOfFile()
+    private func ensureLogHandle() {
+        guard logHandle == nil else { return }
+        let path = SWSConfig.logFile.path
+        if !FileManager.default.fileExists(atPath: path) {
+            FileManager.default.createFile(atPath: path, contents: nil)
         }
-        logHandle?.write(data)
+        logHandle = FileHandle(forWritingAtPath: path)
+        logHandle?.seekToEndOfFile()
+    }
+
+    /// Strips ANSI escape sequences and bare CRs from a stream of terminal output.
+    /// Public-for-tests; the implementation is deliberately conservative — it covers
+    /// CSI (`ESC [ ... letter`), OSC (`ESC ] ... BEL`/`ST`), and a few simple
+    /// two-byte escapes; anything else passes through.
+    static func stripAnsi(_ data: Data) -> Data {
+        var out = Data()
+        out.reserveCapacity(data.count)
+        var i = 0
+        let bytes = [UInt8](data)
+        while i < bytes.count {
+            let b = bytes[i]
+            if b == 0x1B && i + 1 < bytes.count {
+                let next = bytes[i + 1]
+                if next == 0x5B { // ESC [   CSI
+                    i += 2
+                    while i < bytes.count {
+                        let c = bytes[i]
+                        i += 1
+                        if (0x40...0x7E).contains(c) { break }
+                    }
+                    continue
+                }
+                if next == 0x5D { // ESC ]   OSC — terminated by BEL or ST (ESC \)
+                    i += 2
+                    while i < bytes.count {
+                        let c = bytes[i]
+                        if c == 0x07 { i += 1; break }
+                        if c == 0x1B && i + 1 < bytes.count && bytes[i + 1] == 0x5C {
+                            i += 2; break
+                        }
+                        i += 1
+                    }
+                    continue
+                }
+                // Two-byte escapes: ESC (B, ESC =, ESC >, ESC c, ESC 7, ESC 8, etc.
+                i += 2
+                continue
+            }
+            if b == 0x0D { // bare CR — terminals overwrite the line; drop it
+                i += 1
+                continue
+            }
+            out.append(b)
+            i += 1
+        }
+        return out
     }
 
     // MARK: - Option+drag to move window
@@ -205,6 +259,19 @@ final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
 
     func processTerminated(source: SwiftTerm.TerminalView, exitCode: Int32?) {
         processRunning = false
+
+        let now = Date()
+        restartTimestamps.append(now)
+        restartTimestamps.removeAll { now.timeIntervalSince($0) > restartWindow }
+
+        if restartHalted { return }
+
+        if restartTimestamps.count > restartLimit {
+            restartHalted = true
+            let msg = "\r\n\u{1B}[31mSWS: process exited \(restartLimit) times in \(Int(restartWindow))s — check command in Preferences\u{1B}[0m\r\n"
+            terminal.feed(text: msg)
+            return
+        }
         onProcessExit?()
     }
 }

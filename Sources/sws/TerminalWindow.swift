@@ -59,6 +59,7 @@ final class TerminalWindow: NSPanel {
 
     func show() {
         previousApp = NSWorkspace.shared.frontmostApplication
+        terminalView.resetRestartGovernor()
         if !terminalView.isProcessRunning {
             terminalView.startProcess()
         }

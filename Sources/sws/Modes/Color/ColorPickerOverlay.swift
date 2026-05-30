@@ -75,12 +75,35 @@ final class ColorPickerOverlay {
 
     // MARK: - Capture
 
-    /// Captures `rect` (in global CG screen coordinates). The overlay
-    /// windows have sharingType = .none so they're already excluded
-    /// from the screen-capture pipeline — no window-list filtering
-    /// needed.
+    /// Captures `rect` (in global CG screen coordinates) by reading
+    /// the display's framebuffer directly. We use CGDisplayCreateImage
+    /// rather than CGWindowListCreateImage because the latter goes
+    /// through the window-list / compositor layer and misses fullscreen
+    /// apps (which live in their own space) — sampling falls through to
+    /// the desktop wallpaper. CGDisplayCreateImage reads what's actually
+    /// on the display, so it captures fullscreen content correctly.
+    ///
+    /// The overlay windows are excluded via sharingType = .none.
     func captureScreenRegion(_ rect: CGRect) -> CGImage? {
-        return CGWindowListCreateImage(rect, .optionOnScreenOnly, kCGNullWindowID, [.bestResolution])
+        let mid = CGPoint(x: rect.midX, y: rect.midY)
+        let displayID = ColorPickerOverlay.displayContaining(point: mid) ?? CGMainDisplayID()
+        let displayBounds = CGDisplayBounds(displayID)
+        let local = CGRect(
+            x: rect.minX - displayBounds.minX,
+            y: rect.minY - displayBounds.minY,
+            width: rect.width,
+            height: rect.height
+        )
+        return CGDisplayCreateImage(displayID, rect: local)
+    }
+
+    private static func displayContaining(point: CGPoint) -> CGDirectDisplayID? {
+        let maxCount: UInt32 = 16
+        var displays = [CGDirectDisplayID](repeating: 0, count: Int(maxCount))
+        var matching: UInt32 = 0
+        let err = CGGetDisplaysWithPoint(point, maxCount, &displays, &matching)
+        guard err == .success, matching > 0 else { return nil }
+        return displays[0]
     }
 
     private func pickColor(at point: CGPoint) -> NSColor? {

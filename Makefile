@@ -29,4 +29,4 @@ run:
 	swift build -c release && .build/release/sws
 
 install: build
-	cp .build/release/sws /usr/local/bin/sws
+	sudo cp .build/release/sws /usr/local/bin/sws

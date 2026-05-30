@@ -34,7 +34,7 @@ mv sws /usr/local/bin/
 git clone https://github.com/merv1n34k/sws.git
 cd sws
 make build
-make install  # copies to /usr/local/bin
+make install  # sudo cp .build/release/sws /usr/local/bin/sws
 ```
 
 ## Usage

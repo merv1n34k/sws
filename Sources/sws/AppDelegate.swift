@@ -17,6 +17,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusItem()
         setupWindow()
         registerDefaultHotkeyOnly()
+        ensureScreenCapturePermission()
+    }
+
+    /// Color mode needs Screen Recording permission to read pixels
+    /// from app windows; without it CGDisplayCreateImage falls back
+    /// to the desktop wallpaper only. Prompt the user once on launch.
+    private func ensureScreenCapturePermission() {
+        guard config.modes.contains(where: { $0.type == "color" }) else { return }
+        if CGPreflightScreenCaptureAccess() {
+            NSLog("SWS: screen recording permission granted")
+            return
+        }
+        NSLog("SWS: screen recording permission missing — prompting user")
+        _ = CGRequestScreenCaptureAccess()
+        // The prompt directs the user to System Settings > Privacy &
+        // Security > Screen Recording. After enabling, sws must be
+        // relaunched for the new permission to take effect.
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "SWS needs Screen Recording permission"
+            alert.informativeText = """
+                The color picker reads pixels from your screen. Without \
+                Screen Recording permission it can only see the desktop \
+                wallpaper, not app windows.
+
+                Open System Settings → Privacy & Security → Screen \
+                Recording, enable SWS, then quit and reopen SWS.
+                """
+            alert.addButton(withTitle: "Open System Settings")
+            alert.addButton(withTitle: "Later")
+            if alert.runModal() == .alertFirstButtonReturn {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+        }
     }
 
     // MARK: - Mode lifecycle

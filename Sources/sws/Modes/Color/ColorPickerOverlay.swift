@@ -107,6 +107,9 @@ final class ColorPickerOverlay {
     }
 
     private func pickColor(at point: CGPoint) -> NSColor? {
+        if !CGPreflightScreenCaptureAccess() {
+            print("SWS picker: Screen Recording permission missing — only the desktop wallpaper can be read. Grant it in System Settings → Privacy & Security → Screen Recording and relaunch SWS.")
+        }
         let captureRect = CGRect(x: point.x, y: point.y, width: 1, height: 1)
         guard let img = captureScreenRegion(captureRect) else {
             print("SWS picker: capture at (\(point.x), \(point.y)) returned nil")

@@ -37,9 +37,20 @@ sudo mv sws /usr/local/bin/
 ```bash
 git clone https://github.com/merv1n34k/sws.git
 cd sws
-make build
-make install  # sudo cp .build/release/sws /usr/local/bin/sws
+make app       # builds .build/SWS.app
+make install   # copies SWS.app to /Applications
+open /Applications/SWS.app
 ```
+
+The build wraps the binary in a proper `.app` bundle with an ad-hoc
+code signature. This matters for permissions: TCC (Screen Recording,
+Accessibility, etc.) tracks apps by bundle identity, so running a bare
+`.build/release/sws` binary loses its permissions on every rebuild.
+
+The first launch will prompt for **Screen Recording** permission
+(needed by the Color mode to read pixels). Grant it in
+**System Settings → Privacy & Security → Screen Recording**, then quit
+and reopen SWS.
 
 ## Usage
 

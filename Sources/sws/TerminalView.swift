@@ -242,6 +242,12 @@ final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
                     self.dragOrigin = nil
                     return nil
                 }
+                // tmux-style: copy selection to clipboard on mouse release
+                if inTerminal, let text = self.terminal.getSelection(), !text.isEmpty {
+                    let pb = NSPasteboard.general
+                    pb.clearContents()
+                    pb.setString(text, forType: .string)
+                }
             default:
                 break
             }

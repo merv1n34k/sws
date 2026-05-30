@@ -4,6 +4,5 @@
 func registerBuiltInModes() {
     ModeRegistry.shared.register(TerminalModeFactory.self)
     ModeRegistry.shared.register(TimerModeFactory.self)
-    // Populated as each built-in mode lands:
-    //   ModeRegistry.shared.register(ColorModeFactory.self)
+    ModeRegistry.shared.register(ColorModeFactory.self)
 }

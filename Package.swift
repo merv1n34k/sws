@@ -18,5 +18,10 @@ let package = Package(
                 .linkedFramework("Carbon"),
             ]
         ),
+        .testTarget(
+            name: "swsTests",
+            dependencies: ["sws"],
+            path: "Tests/swsTests"
+        ),
     ]
 )

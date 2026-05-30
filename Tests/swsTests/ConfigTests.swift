@@ -60,6 +60,43 @@ struct ConfigTests {
     }
 
     @Test
+    func toolsStyleConfigMigratesEachToolToAMode() throws {
+        let tools = """
+        {
+          "shortcut": { "key": "s", "modifiers": ["shift", "option"] },
+          "modifiers": ["option"],
+          "tools": [
+            { "name": "calc", "type": "terminal",
+              "command": "/path/to/bbc", "args": [], "key": "c" },
+            { "name": "old", "type": "terminal",
+              "command": "bc", "args": ["-l", "-q"], "key": "d" }
+          ],
+          "width": 468, "height": 685,
+          "rememberSize": true, "fontFamily": "Menlo", "fontSize": 14,
+          "logInput": true
+        }
+        """.data(using: .utf8)!
+
+        let (config, migrated) = try SWSConfig.parse(data: tools)
+        #expect(migrated == true)
+        #expect(config.defaultMode == "calc")
+        #expect(config.modes.map(\.id) == ["calc", "old"])
+
+        // First tool inherits the summon shortcut
+        #expect(config.modes[0].hotkey?.key == "s")
+        #expect(config.modes[0].hotkey?.modifiers == ["shift", "option"])
+
+        // Subsequent tools combine tool.key with top-level modifiers
+        #expect(config.modes[1].hotkey?.key == "d")
+        #expect(config.modes[1].hotkey?.modifiers == ["option"])
+
+        #expect(config.modes[0].raw["command"] as? String == "/path/to/bbc")
+        #expect(config.modes[1].raw["command"] as? String == "bc")
+        #expect(config.logInput == true)
+        #expect(config.width == 468)
+    }
+
+    @Test
     func v1WithoutLogInputMigratesToFalse() throws {
         let v1 = """
         {

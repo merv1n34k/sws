@@ -99,7 +99,7 @@ struct SWSConfig {
         return config
     }
 
-    /// Parses raw JSON, transparently migrating v1 to v2.
+    /// Parses raw JSON, transparently migrating older schemas to v2.
     /// Returns the parsed config and a flag indicating whether a migration ran.
     static func parse(data: Data) throws -> (SWSConfig, migrated: Bool) {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -107,9 +107,13 @@ struct SWSConfig {
                 userInfo: [NSLocalizedDescriptionKey: "config root is not an object"])
         }
 
-        let isV1 = json["modes"] == nil
-        let canonical = isV1 ? migrateV1ToV2(json) : json
-        return (try decodeV2(canonical), migrated: isV1)
+        if json["modes"] != nil {
+            return (try decodeV2(json), migrated: false)
+        }
+        if let tools = json["tools"] as? [[String: Any]], !tools.isEmpty {
+            return (try decodeV2(migrateToolsToV2(json, tools: tools)), migrated: true)
+        }
+        return (try decodeV2(migrateV1ToV2(json)), migrated: true)
     }
 
     private static func decodeV2(_ json: [String: Any]) throws -> SWSConfig {
@@ -147,6 +151,52 @@ struct SWSConfig {
             fontSize: (json["fontSize"] as? Double) ?? 14,
             logInput: (json["logInput"] as? Bool) ?? false
         )
+    }
+
+    /// Migrates a `tools`-style config (intermediate schema with a top-level
+    /// `tools: [{name, type, command, args, key}]` array and shared
+    /// top-level `shortcut` + `modifiers`) into v2.
+    ///
+    /// The first tool becomes the default mode and inherits the top-level
+    /// `shortcut` as its summon hotkey. Subsequent tools get hotkeys
+    /// composed of `tool.key` + the top-level `modifiers`.
+    static func migrateToolsToV2(_ v1: [String: Any], tools: [[String: Any]]) -> [String: Any] {
+        let sharedModifiers = (v1["modifiers"] as? [String]) ?? ["shift", "option"]
+        let summonShortcut = v1["shortcut"] as? [String: Any]
+
+        var modes: [[String: Any]] = []
+        for (idx, tool) in tools.enumerated() {
+            let id = (tool["name"] as? String) ?? "tool\(idx)"
+            let type = (tool["type"] as? String) ?? "terminal"
+            let command = tool["command"] as? String ?? ""
+            let args = (tool["args"] as? [String]) ?? []
+
+            let hotkey: [String: Any]
+            if idx == 0, let summon = summonShortcut {
+                hotkey = summon
+            } else {
+                let key = (tool["key"] as? String) ?? "s"
+                hotkey = ["key": key, "modifiers": sharedModifiers]
+            }
+
+            modes.append([
+                "id": id,
+                "type": type,
+                "hotkey": hotkey,
+                "command": command,
+                "args": args,
+            ])
+        }
+
+        var v2: [String: Any] = [
+            "version": currentVersion,
+            "defaultMode": modes.first?["id"] ?? "default",
+            "modes": modes,
+        ]
+        for key in ["width", "height", "rememberSize", "fontFamily", "fontSize", "logInput"] {
+            if let v = v1[key] { v2[key] = v }
+        }
+        return v2
     }
 
     /// Wraps a v1 config (top-level `command`/`args`/`shortcut`) into a

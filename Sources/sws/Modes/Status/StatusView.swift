@@ -76,12 +76,13 @@ final class StatusView: NSView, NSTextFieldDelegate {
         separator.translatesAutoresizingMaskIntoConstraints = false
         addSubview(separator)
 
-        // Button grid (3 per row).
+        // Button grid (2 per row, fixed cell width so values can grow
+        // without resizing the layout).
         let grid = NSGridView()
         grid.translatesAutoresizingMaskIntoConstraints = false
         grid.rowSpacing = 8
         grid.columnSpacing = 8
-        grid.xPlacement = .fill
+        grid.xPlacement = .leading
         grid.yPlacement = .fill
 
         var current: [StatusStatButton] = []
@@ -92,14 +93,13 @@ final class StatusView: NSView, NSTextFieldDelegate {
             }
             buttons[kind] = btn
             current.append(btn)
-            if current.count == 3 {
+            if current.count == 2 {
                 grid.addRow(with: current.map { $0 as NSView })
                 current.removeAll()
             }
         }
         if !current.isEmpty {
-            // Pad to 3 columns.
-            while current.count < 3 { current.append(StatusStatButton.placeholder()) }
+            while current.count < 2 { current.append(StatusStatButton.placeholder()) }
             grid.addRow(with: current.map { $0 as NSView })
         }
         addSubview(grid)
@@ -263,7 +263,8 @@ final class StatusStatButton: NSView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 56),
+            heightAnchor.constraint(equalToConstant: 60),
+            widthAnchor.constraint(equalToConstant: 200),
             stack.centerXAnchor.constraint(equalTo: centerXAnchor),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
             stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 4),
@@ -275,8 +276,8 @@ final class StatusStatButton: NSView {
 
     static func placeholder() -> StatusStatButton {
         // An "empty" cell to keep the grid uniform when items aren't a
-        // multiple of 3.
-        let p = StatusStatButton(kind: .gpu, action: { _ in })
+        // multiple of the column count.
+        let p = StatusStatButton(kind: .cpu, action: { _ in })
         p.isHidden = true
         return p
     }

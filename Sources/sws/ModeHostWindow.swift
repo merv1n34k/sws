@@ -36,6 +36,10 @@ final class ModeHostWindow: NSPanel {
         self.isOpaque = false
         self.isReleasedWhenClosed = false
         self.minSize = NSSize(width: 200, height: 100)
+        // Mode views all use a dark backdrop. Force dark appearance
+        // so system controls (segmented, popup, checkbox text) render
+        // with light text and contrast against it correctly.
+        self.appearance = NSAppearance(named: .darkAqua)
 
         centerOnScreen(width: width, height: height)
 

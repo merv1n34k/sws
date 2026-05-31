@@ -15,6 +15,7 @@ protocol MenuBarWidget: AnyObject {
 /// What gets shown on the menu-bar button.
 struct MenuBarRendering {
     var text: String? = nil
+    var attributedText: NSAttributedString? = nil
     var image: NSImage? = nil
     /// Optional tooltip with longer context.
     var tooltip: String? = nil
@@ -22,9 +23,12 @@ struct MenuBarRendering {
 
 extension MenuBarRendering {
     static func text(_ s: String, tooltip: String? = nil) -> Self {
-        .init(text: s, image: nil, tooltip: tooltip)
+        .init(text: s, attributedText: nil, image: nil, tooltip: tooltip)
+    }
+    static func attributed(_ a: NSAttributedString, tooltip: String? = nil) -> Self {
+        .init(text: nil, attributedText: a, image: nil, tooltip: tooltip)
     }
     static func image(_ img: NSImage, tooltip: String? = nil) -> Self {
-        .init(text: nil, image: img, tooltip: tooltip)
+        .init(text: nil, attributedText: nil, image: img, tooltip: tooltip)
     }
 }

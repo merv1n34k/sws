@@ -1,18 +1,17 @@
 import AppKit
 
-/// Top: codec picker. Below: left text pane and right pane (text or
-/// image, depending on the codec). For bidirectional text codecs,
-/// editing either pane updates the other. For image codecs, the
-/// right pane shows the generated image and accepts dropped images
-/// for decoding.
+/// Top: codec picker. Below: side-by-side left text pane + right
+/// (text or image, depending on codec). For bidirectional text
+/// codecs, editing either pane updates the other.
 final class TwoPaneConverter: NSView, NSTextViewDelegate {
     private let codecs: [EnDeCodec]
     private let picker = NSPopUpButton()
-    private let leftView = NSTextView()
-    private let rightView = NSTextView()
-    private let leftScroll = NSScrollView()
-    private let rightScroll = NSScrollView()
+    private let leftScroll: NSScrollView
+    private let rightScroll: NSScrollView
+    private let leftView: NSTextView
+    private let rightView: NSTextView
     private let rightImage = DropImageView()
+    private let rightContainer = NSView()
     private var codec: EnDeCodec
     private var muted = false        // re-entrancy guard while we cross-update
 
@@ -20,6 +19,15 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
         precondition(!codecs.isEmpty)
         self.codecs = codecs
         self.codec = codecs[0]
+        // NSTextView.scrollableTextView() returns a properly-wired
+        // scroll view; reaching for documentView gives us the inner
+        // text view. This is the recommended pattern (manual
+        // scroll + text wiring tends to under-size on macOS).
+        self.leftScroll = NSTextView.scrollableTextView()
+        self.rightScroll = NSTextView.scrollableTextView()
+        self.leftView = leftScroll.documentView as! NSTextView
+        self.rightView = rightScroll.documentView as! NSTextView
+
         super.init(frame: .zero)
         wantsLayer = true
         layer?.backgroundColor = NSColor(white: 0.1, alpha: 1).cgColor
@@ -28,7 +36,6 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
         picker.target = self
         picker.action = #selector(codecChanged)
         picker.bezelStyle = .rounded
-        picker.translatesAutoresizingMaskIntoConstraints = false
 
         let typeLabel = NSTextField(labelWithString: "Type")
         typeLabel.font = NSFont.systemFont(ofSize: 11, weight: .medium)
@@ -37,15 +44,12 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
         let topRow = NSStackView(views: [typeLabel, picker])
         topRow.spacing = 8
         topRow.alignment = .centerY
-        topRow.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(topRow)
 
         configureTextView(leftView, scroll: leftScroll)
         configureTextView(rightView, scroll: rightScroll)
         leftView.delegate = self
         rightView.delegate = self
 
-        rightImage.translatesAutoresizingMaskIntoConstraints = false
         rightImage.imageScaling = .scaleProportionallyUpOrDown
         rightImage.wantsLayer = true
         rightImage.layer?.backgroundColor = NSColor(white: 0.12, alpha: 1).cgColor
@@ -54,28 +58,45 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
             self?.applyDroppedImage(image)
         }
 
-        addSubview(leftScroll)
-        addSubview(rightScroll)
-        addSubview(rightImage)
+        // Right pane is either scroll (text) or image — stack them in
+        // a container and toggle isHidden.
+        rightContainer.translatesAutoresizingMaskIntoConstraints = false
+        rightScroll.translatesAutoresizingMaskIntoConstraints = false
+        rightImage.translatesAutoresizingMaskIntoConstraints = false
+        rightContainer.addSubview(rightScroll)
+        rightContainer.addSubview(rightImage)
+        NSLayoutConstraint.activate([
+            rightScroll.topAnchor.constraint(equalTo: rightContainer.topAnchor),
+            rightScroll.bottomAnchor.constraint(equalTo: rightContainer.bottomAnchor),
+            rightScroll.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor),
+            rightScroll.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor),
+            rightImage.topAnchor.constraint(equalTo: rightContainer.topAnchor),
+            rightImage.bottomAnchor.constraint(equalTo: rightContainer.bottomAnchor),
+            rightImage.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor),
+            rightImage.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor),
+        ])
+
+        leftScroll.translatesAutoresizingMaskIntoConstraints = false
+        let split = NSStackView(views: [leftScroll, rightContainer])
+        split.orientation = .horizontal
+        split.distribution = .fillEqually
+        split.spacing = 8
+        split.translatesAutoresizingMaskIntoConstraints = false
+
+        let mainStack = NSStackView(views: [topRow, split])
+        mainStack.orientation = .vertical
+        mainStack.spacing = 10
+        mainStack.alignment = .leading
+        mainStack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(mainStack)
 
         NSLayoutConstraint.activate([
-            topRow.topAnchor.constraint(equalTo: topAnchor, constant: 10),
-            topRow.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-
-            leftScroll.topAnchor.constraint(equalTo: topRow.bottomAnchor, constant: 10),
-            leftScroll.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
-            leftScroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-
-            rightScroll.topAnchor.constraint(equalTo: leftScroll.topAnchor),
-            rightScroll.bottomAnchor.constraint(equalTo: leftScroll.bottomAnchor),
-            rightScroll.leadingAnchor.constraint(equalTo: leftScroll.trailingAnchor, constant: 8),
-            rightScroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            rightScroll.widthAnchor.constraint(equalTo: leftScroll.widthAnchor),
-
-            rightImage.topAnchor.constraint(equalTo: rightScroll.topAnchor),
-            rightImage.bottomAnchor.constraint(equalTo: rightScroll.bottomAnchor),
-            rightImage.leadingAnchor.constraint(equalTo: rightScroll.leadingAnchor),
-            rightImage.trailingAnchor.constraint(equalTo: rightScroll.trailingAnchor),
+            mainStack.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            mainStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            mainStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            mainStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+            split.leadingAnchor.constraint(equalTo: mainStack.leadingAnchor),
+            split.trailingAnchor.constraint(equalTo: mainStack.trailingAnchor),
         ])
 
         applyCodec()
@@ -100,10 +121,9 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
         tv.isAutomaticLinkDetectionEnabled = false
         tv.textContainerInset = NSSize(width: 8, height: 8)
 
-        scroll.documentView = tv
         scroll.hasVerticalScroller = true
         scroll.borderType = .noBorder
-        scroll.translatesAutoresizingMaskIntoConstraints = false
+        scroll.drawsBackground = false
         scroll.wantsLayer = true
         scroll.layer?.cornerRadius = 8
         scroll.layer?.masksToBounds = true
@@ -144,12 +164,10 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
         if let decoded = codec.textFrom(image: image) {
             muted = true
             leftView.string = decoded
-            rightImage.image = image  // show what they dropped
+            rightImage.image = image
             muted = false
         }
     }
-
-    // MARK: - NSTextViewDelegate
 
     func textDidChange(_ notification: Notification) {
         guard let tv = notification.object as? NSTextView else { return }

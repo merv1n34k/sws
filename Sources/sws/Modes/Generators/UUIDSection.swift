@@ -7,8 +7,8 @@ final class UUIDSection: NSView, GeneratorsSection {
     )
     private let stepper = NSStepper()
     private let countLabel = NSTextField(labelWithString: "5")
-    private let scroll = NSScrollView()
-    private let textView = NSTextView()
+    private let scroll: NSScrollView
+    private let textView: NSTextView
     private let regenButton = NSButton(title: "Regenerate", target: nil, action: nil)
     private let copyButton = NSButton(title: "Copy all", target: nil, action: nil)
 
@@ -16,6 +16,8 @@ final class UUIDSection: NSView, GeneratorsSection {
     private var kind: Generators.IDKind = .v4
 
     init() {
+        scroll = NSTextView.scrollableTextView()
+        textView = scroll.documentView as! NSTextView
         super.init(frame: .zero)
         buildLayout()
         wire()
@@ -54,9 +56,9 @@ final class UUIDSection: NSView, GeneratorsSection {
         textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         textView.textContainerInset = NSSize(width: 8, height: 8)
 
-        scroll.documentView = textView
         scroll.hasVerticalScroller = true
         scroll.borderType = .noBorder
+        scroll.drawsBackground = false
         scroll.wantsLayer = true
         scroll.layer?.cornerRadius = 6
         scroll.layer?.masksToBounds = true

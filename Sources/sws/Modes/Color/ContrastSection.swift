@@ -75,7 +75,35 @@ final class ContrastSection: NSView {
     private func recompute() {
         let ratio = ContrastSection.contrastRatio(wellA.color, wellB.color)
         ratioLabel.stringValue = String(format: "%.2f : 1", ratio)
-        verdictLabel.stringValue = Self.verdict(ratio: ratio)
+        verdictLabel.attributedStringValue = Self.verdictAttributed(ratio: ratio)
+    }
+
+    /// Color-coded verdict: green for pass, red for fail. Makes the
+    /// outcome unambiguous regardless of font rendering.
+    static func verdictAttributed(ratio r: Double) -> NSAttributedString {
+        let entries: [(label: String, threshold: Double)] = [
+            ("AA",    4.5),
+            ("AA-L",  3.0),
+            ("AAA",   7.0),
+        ]
+        let result = NSMutableAttributedString()
+        for (i, e) in entries.enumerated() {
+            let passes = r >= e.threshold
+            let chunk = NSMutableAttributedString(
+                string: "\(e.label) \(passes ? "✓" : "✗")",
+                attributes: [
+                    .foregroundColor: passes ? NSColor.systemGreen : NSColor.systemRed,
+                    .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+                ]
+            )
+            result.append(chunk)
+            if i < entries.count - 1 {
+                result.append(NSAttributedString(string: "  ", attributes: [
+                    .foregroundColor: NSColor.secondaryLabelColor,
+                ]))
+            }
+        }
+        return result
     }
 
     /// WCAG 2.2 contrast ratio between two colors. Range [1.0, 21.0].

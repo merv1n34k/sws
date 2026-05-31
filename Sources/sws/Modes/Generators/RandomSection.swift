@@ -1,8 +1,8 @@
 import AppKit
 
 final class RandomSection: NSView, GeneratorsSection {
-    private let inputScroll = NSScrollView()
-    private let inputView = NSTextView()
+    private let inputScroll: NSScrollView
+    private let inputView: NSTextView
     private let withoutReplCheck = NSButton(checkboxWithTitle: "Without replacement", target: nil, action: nil)
     private let pickButton = NSButton(title: "Pick", target: nil, action: nil)
     private let resetButton = NSButton(title: "Reset", target: nil, action: nil)
@@ -13,6 +13,8 @@ final class RandomSection: NSView, GeneratorsSection {
     private var alreadyPicked: Set<String> = []
 
     init() {
+        inputScroll = NSTextView.scrollableTextView()
+        inputView = inputScroll.documentView as! NSTextView
         super.init(frame: .zero)
         buildLayout()
         wire()
@@ -31,10 +33,12 @@ final class RandomSection: NSView, GeneratorsSection {
         inputView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         inputView.textContainerInset = NSSize(width: 8, height: 8)
         inputView.string = ""
+        inputView.isAutomaticQuoteSubstitutionEnabled = false
+        inputView.isAutomaticDashSubstitutionEnabled = false
 
-        inputScroll.documentView = inputView
         inputScroll.hasVerticalScroller = true
         inputScroll.borderType = .noBorder
+        inputScroll.drawsBackground = false
         inputScroll.wantsLayer = true
         inputScroll.layer?.cornerRadius = 6
         inputScroll.layer?.masksToBounds = true

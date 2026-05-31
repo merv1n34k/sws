@@ -102,12 +102,22 @@ final class MenuBarWidgetRegistry {
 
     private func renderInto(item: NSStatusItem, widget: MenuBarWidget) {
         let r = widget.render()
-        if let btn = item.button {
+        guard let btn = item.button else { return }
+        if let attr = r.attributedText {
+            btn.attributedTitle = attr
+            btn.title = ""
+        } else {
             btn.title = r.text ?? ""
-            btn.image = r.image
-            btn.toolTip = r.tooltip
-            btn.imagePosition = (r.image != nil && r.text != nil) ? .imageLeading : .imageOnly
-            if r.image == nil { btn.imagePosition = .noImage }
+            btn.attributedTitle = NSAttributedString(string: r.text ?? "")
+        }
+        btn.image = r.image
+        btn.toolTip = r.tooltip
+        if r.image != nil && (r.text != nil || r.attributedText != nil) {
+            btn.imagePosition = .imageLeading
+        } else if r.image != nil {
+            btn.imagePosition = .imageOnly
+        } else {
+            btn.imagePosition = .noImage
         }
     }
 

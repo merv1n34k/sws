@@ -33,22 +33,32 @@ final class DiskWidget: MenuBarWidget {
     }
 }
 
-final class GPUWidget: MenuBarWidget {
-    let id = "gpu"
-    let pollInterval: TimeInterval = 5
-    func render() -> MenuBarRendering {
-        // Without IOReport/SMC, give a stable readout instead of fake numbers.
-        return .text("GPU ?")
-    }
-}
-
+/// Two stacked lines, upload over download — fits in the menu bar
+/// at 9pt with tight line height.
 final class NetworkWidget: MenuBarWidget {
     let id = "network"
     let pollInterval: TimeInterval = 1
     private let sampler = SystemStats.NetworkSampler()
+
     func render() -> MenuBarRendering {
         let (down, up) = sampler.sample()
-        return .text("↓" + SystemStats.humanRate(down) + " ↑" + SystemStats.humanRate(up))
+        let upStr   = "↑ " + SystemStats.humanRate(up)
+        let downStr = "↓ " + SystemStats.humanRate(down)
+
+        let style = NSMutableParagraphStyle()
+        style.alignment = .right
+        style.lineSpacing = 0
+        style.maximumLineHeight = 9
+        style.minimumLineHeight = 9
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular),
+            .paragraphStyle: style,
+            .foregroundColor: NSColor.labelColor,
+        ]
+        let attr = NSMutableAttributedString()
+        attr.append(NSAttributedString(string: upStr + "\n", attributes: attrs))
+        attr.append(NSAttributedString(string: downStr, attributes: attrs))
+        return .attributed(attr)
     }
 }
 
@@ -81,14 +91,16 @@ final class WiFiWidget: MenuBarWidget {
 }
 
 /// Catalogue of widget ids the Status mode shows as buttons.
+/// GPU was removed — without IOReport plumbing we can't show an
+/// honest percentage, and a placeholder isn't worth the screen
+/// real estate.
 enum StatusWidgetID: String, CaseIterable {
-    case space, cpu, gpu, network, ram
+    case space, cpu, network, ram
 
     var label: String {
         switch self {
         case .space:   return "Space"
         case .cpu:     return "CPU"
-        case .gpu:     return "GPU"
         case .network: return "Net"
         case .ram:     return "RAM"
         }
@@ -98,7 +110,6 @@ enum StatusWidgetID: String, CaseIterable {
         switch self {
         case .space:   return DiskWidget()
         case .cpu:     return CPUWidget()
-        case .gpu:     return GPUWidget()
         case .network: return NetworkWidget()
         case .ram:     return RAMWidget()
         }

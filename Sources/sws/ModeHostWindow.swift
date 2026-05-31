@@ -7,7 +7,13 @@ final class ModeHostWindow: NSPanel {
     override var canBecomeKey: Bool { true }
 
     private(set) var activeMode: Mode?
+    /// The app sws should return focus to on hide. Maintained
+    /// continuously by `workspaceObserver` so even if the user
+    /// switches apps WHILE sws is open, we restore to the most
+    /// recently focused non-sws app (not the one that was frontmost
+    /// when sws was originally summoned).
     private var previousApp: NSRunningApplication?
+    private var workspaceObserver: NSObjectProtocol?
     private var container: NSView!
 
     var onSizeChanged: ((Double, Double) -> Void)?
@@ -47,6 +53,33 @@ final class ModeHostWindow: NSPanel {
             self, selector: #selector(windowDidResize),
             name: NSWindow.didResizeNotification, object: self
         )
+
+        installWorkspaceObserver()
+    }
+
+    deinit {
+        if let observer = workspaceObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+    }
+
+    /// Seeds `previousApp` and subscribes to NSWorkspace activation
+    /// notifications so previousApp tracks the most recently focused
+    /// non-sws application at all times.
+    private func installWorkspaceObserver() {
+        if let front = NSWorkspace.shared.frontmostApplication,
+           front.bundleIdentifier != Bundle.main.bundleIdentifier {
+            previousApp = front
+        }
+        workspaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
+            self?.previousApp = app
+        }
     }
 
     private func centerOnScreen(width: Double, height: Double) {
@@ -77,7 +110,8 @@ final class ModeHostWindow: NSPanel {
     }
 
     func show(mode: Mode) {
-        previousApp = NSWorkspace.shared.frontmostApplication
+        // previousApp is maintained by the workspace observer; no need
+        // to snapshot it here.
         if activeMode !== mode {
             switchMode(mode)
         }
@@ -90,10 +124,11 @@ final class ModeHostWindow: NSPanel {
     func hide() {
         activeMode?.windowDidHide()
         orderOut(nil)
-        if let app = previousApp {
+        if let app = previousApp, !app.isTerminated {
             app.activate()
-            previousApp = nil
         }
+        // Keep previousApp populated — the observer will overwrite it
+        // when the user next focuses a different non-sws app.
     }
 
     private func focusActiveMode() {

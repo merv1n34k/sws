@@ -10,6 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var modeOrder: [String] = []       // preserves config order for menu
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // All mode views use a dark backdrop. Forcing darkAqua at the
+        // NSApp level makes system controls (segmented, popup,
+        // checkbox text, NSColor.labelColor, etc.) resolve to their
+        // dark-mode variants regardless of the user's OS theme.
+        NSApp.appearance = NSAppearance(named: .darkAqua)
         registerBuiltInModes()
         config = SWSConfig.load()
         buildModes()

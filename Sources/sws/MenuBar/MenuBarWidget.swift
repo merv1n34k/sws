@@ -31,4 +31,41 @@ extension MenuBarRendering {
     static func image(_ img: NSImage, tooltip: String? = nil) -> Self {
         .init(text: nil, attributedText: nil, image: img, tooltip: tooltip)
     }
+
+    /// Two-line widget: a small label on top, the live value below.
+    /// Renders to a template NSImage so macOS tints it the right color
+    /// for whichever menu-bar appearance is active.
+    static func twoLines(top: String, bottom: String, tooltip: String? = nil) -> Self {
+        let topFont = NSFont.systemFont(ofSize: 9, weight: .semibold)
+        let bottomFont = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium)
+
+        // Template images use only the alpha channel; the actual color
+        // is drawn as black on transparent and macOS recolors it.
+        let topAttrs: [NSAttributedString.Key: Any] = [
+            .font: topFont,
+            .foregroundColor: NSColor.black,
+        ]
+        let bottomAttrs: [NSAttributedString.Key: Any] = [
+            .font: bottomFont,
+            .foregroundColor: NSColor.black,
+        ]
+        let topNS = top as NSString
+        let bottomNS = bottom as NSString
+        let topSize = topNS.size(withAttributes: topAttrs)
+        let bottomSize = bottomNS.size(withAttributes: bottomAttrs)
+        let width = ceil(max(topSize.width, bottomSize.width)) + 4
+        let height: CGFloat = 22
+
+        let img = NSImage(size: NSSize(width: width, height: height))
+        img.lockFocus()
+        // y origin is bottom-left in AppKit; menu-bar text is centered
+        // vertically within ~22pt. Top line ≈ 11pt baseline, bottom ≈ 0pt.
+        let topX = (width - topSize.width) / 2
+        let bottomX = (width - bottomSize.width) / 2
+        topNS.draw(at: NSPoint(x: topX, y: 11), withAttributes: topAttrs)
+        bottomNS.draw(at: NSPoint(x: bottomX, y: 0), withAttributes: bottomAttrs)
+        img.unlockFocus()
+        img.isTemplate = true
+        return .init(text: nil, attributedText: nil, image: img, tooltip: tooltip)
+    }
 }

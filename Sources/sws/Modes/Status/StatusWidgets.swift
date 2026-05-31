@@ -9,7 +9,7 @@ final class CPUWidget: MenuBarWidget {
     private let sampler = SystemStats.CPUSampler()
     func render() -> MenuBarRendering {
         let pct = sampler.sample() * 100
-        return .text(String(format: "CPU %.0f%%", pct))
+        return .twoLines(top: "CPU", bottom: String(format: "%.0f%%", pct))
     }
 }
 
@@ -20,7 +20,7 @@ final class RAMWidget: MenuBarWidget {
         let (used, total) = SystemStats.memoryUsage()
         let usedGB = Double(used) / 1_073_741_824
         let totalGB = Double(total) / 1_073_741_824
-        return .text(String(format: "RAM %.1f/%.0fG", usedGB, totalGB))
+        return .twoLines(top: "RAM", bottom: String(format: "%.1f/%.0fG", usedGB, totalGB))
     }
 }
 
@@ -29,36 +29,20 @@ final class DiskWidget: MenuBarWidget {
     let pollInterval: TimeInterval = 30
     func render() -> MenuBarRendering {
         let (free, _) = SystemStats.diskUsage()
-        return .text("Disk " + SystemStats.humanBytes(free))
+        return .twoLines(top: "SSD", bottom: SystemStats.humanBytes(free))
     }
 }
 
-/// Two stacked lines, upload over download — fits in the menu bar
-/// at 9pt with tight line height.
 final class NetworkWidget: MenuBarWidget {
     let id = "network"
     let pollInterval: TimeInterval = 1
     private let sampler = SystemStats.NetworkSampler()
-
     func render() -> MenuBarRendering {
         let (down, up) = sampler.sample()
-        let upStr   = "↑ " + SystemStats.humanRate(up)
-        let downStr = "↓ " + SystemStats.humanRate(down)
-
-        let style = NSMutableParagraphStyle()
-        style.alignment = .right
-        style.lineSpacing = 0
-        style.maximumLineHeight = 9
-        style.minimumLineHeight = 9
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular),
-            .paragraphStyle: style,
-            .foregroundColor: NSColor.labelColor,
-        ]
-        let attr = NSMutableAttributedString()
-        attr.append(NSAttributedString(string: upStr + "\n", attributes: attrs))
-        attr.append(NSAttributedString(string: downStr, attributes: attrs))
-        return .attributed(attr)
+        return .twoLines(
+            top:    "↑ " + SystemStats.humanRate(up),
+            bottom: "↓ " + SystemStats.humanRate(down)
+        )
     }
 }
 
@@ -67,11 +51,13 @@ final class IPWidget: MenuBarWidget {
     let pollInterval: TimeInterval = 60
     func render() -> MenuBarRendering {
         if let ip = NetworkInfo.shared.publicIP {
-            return .text(NetworkInfo.shared.vpnLikely() ? "VPN \(ip)" : "IP \(ip)")
+            return .twoLines(
+                top:    NetworkInfo.shared.vpnLikely() ? "VPN" : "IP",
+                bottom: ip
+            )
         }
-        // Trigger an async refresh; next tick will pick it up.
         NetworkInfo.shared.refreshPublicIP()
-        return .text("IP …")
+        return .twoLines(top: "IP", bottom: "…")
     }
 }
 
@@ -80,13 +66,11 @@ final class WiFiWidget: MenuBarWidget {
     let pollInterval: TimeInterval = 5
     func render() -> MenuBarRendering {
         let snap = WiFiInfo.current()
-        if let ssid = snap.ssid, let rssi = snap.rssi {
-            return .text("\(ssid) \(rssi)dB")
-        }
         if let ssid = snap.ssid {
-            return .text(ssid)
+            let rssi = snap.rssi.map { "\($0)dB" } ?? ""
+            return .twoLines(top: ssid, bottom: rssi)
         }
-        return .text("Wi-Fi —")
+        return .twoLines(top: "Wi-Fi", bottom: "—")
     }
 }
 

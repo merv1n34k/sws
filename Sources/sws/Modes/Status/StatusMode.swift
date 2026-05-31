@@ -3,7 +3,7 @@ import AppKit
 final class StatusMode: Mode {
     let id: String
     let displayName: String
-    let preferredSize: NSSize? = NSSize(width: 460, height: 460)
+    let preferredSize: NSSize? = NSSize(width: 440, height: 340)
     let fixedSize: Bool = true
 
     private lazy var rootView = StatusView()

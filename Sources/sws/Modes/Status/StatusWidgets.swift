@@ -22,10 +22,9 @@ final class RAMWidget: MenuBarWidget {
     private var lastValue = "—"
     func render() -> MenuBarRendering {
         let (used, total) = SystemStats.memoryUsage()
-        let usedGB = Double(used) / 1_073_741_824
-        let totalGB = Double(total) / 1_073_741_824
-        lastValue = String(format: "%.1f / %.0f GB", usedGB, totalGB)
-        return .twoLines(top: "RAM", bottom: String(format: "%.1f/%.0fG", usedGB, totalGB))
+        let pct = total > 0 ? Double(used) / Double(total) * 100 : 0
+        lastValue = String(format: "%.0f%%", pct)
+        return .twoLines(top: "RAM", bottom: lastValue)
     }
     func currentValue() -> String { lastValue }
 }

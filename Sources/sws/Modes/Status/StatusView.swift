@@ -263,8 +263,8 @@ final class StatusStatButton: NSView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 60),
-            widthAnchor.constraint(equalToConstant: 200),
+            heightAnchor.constraint(equalToConstant: 52),
+            widthAnchor.constraint(equalToConstant: 180),
             stack.centerXAnchor.constraint(equalTo: centerXAnchor),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
             stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 4),

@@ -9,6 +9,7 @@ func registerBuiltInModes() {
     ModeRegistry.shared.register(ScratchpadModeFactory.self)
     ModeRegistry.shared.register(ClipboardModeFactory.self)
     ModeRegistry.shared.register(EnDeModeFactory.self)
+    ModeRegistry.shared.register(StatusModeFactory.self)
     // Back-compat for the brief 'oklabs' typeId — maps to 'color'.
     ModeRegistry.shared.registerAlias("oklabs", to: ColorModeFactory.typeId)
 }

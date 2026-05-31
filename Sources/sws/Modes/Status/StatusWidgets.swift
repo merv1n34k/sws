@@ -1,0 +1,106 @@
+import AppKit
+
+/// Concrete menu-bar widgets backed by SystemStats / WiFiInfo /
+/// NetworkInfo. Each widget is small enough to inline here.
+
+final class CPUWidget: MenuBarWidget {
+    let id = "cpu"
+    let pollInterval: TimeInterval = 2
+    private let sampler = SystemStats.CPUSampler()
+    func render() -> MenuBarRendering {
+        let pct = sampler.sample() * 100
+        return .text(String(format: "CPU %.0f%%", pct))
+    }
+}
+
+final class RAMWidget: MenuBarWidget {
+    let id = "ram"
+    let pollInterval: TimeInterval = 3
+    func render() -> MenuBarRendering {
+        let (used, total) = SystemStats.memoryUsage()
+        let usedGB = Double(used) / 1_073_741_824
+        let totalGB = Double(total) / 1_073_741_824
+        return .text(String(format: "RAM %.1f/%.0fG", usedGB, totalGB))
+    }
+}
+
+final class DiskWidget: MenuBarWidget {
+    let id = "space"
+    let pollInterval: TimeInterval = 30
+    func render() -> MenuBarRendering {
+        let (free, _) = SystemStats.diskUsage()
+        return .text("Disk " + SystemStats.humanBytes(free))
+    }
+}
+
+final class GPUWidget: MenuBarWidget {
+    let id = "gpu"
+    let pollInterval: TimeInterval = 5
+    func render() -> MenuBarRendering {
+        // Without IOReport/SMC, give a stable readout instead of fake numbers.
+        return .text("GPU ?")
+    }
+}
+
+final class NetworkWidget: MenuBarWidget {
+    let id = "network"
+    let pollInterval: TimeInterval = 1
+    private let sampler = SystemStats.NetworkSampler()
+    func render() -> MenuBarRendering {
+        let (down, up) = sampler.sample()
+        return .text("↓" + SystemStats.humanRate(down) + " ↑" + SystemStats.humanRate(up))
+    }
+}
+
+final class IPWidget: MenuBarWidget {
+    let id = "ip"
+    let pollInterval: TimeInterval = 60
+    func render() -> MenuBarRendering {
+        if let ip = NetworkInfo.shared.publicIP {
+            return .text(NetworkInfo.shared.vpnLikely() ? "VPN \(ip)" : "IP \(ip)")
+        }
+        // Trigger an async refresh; next tick will pick it up.
+        NetworkInfo.shared.refreshPublicIP()
+        return .text("IP …")
+    }
+}
+
+final class WiFiWidget: MenuBarWidget {
+    let id = "wifi"
+    let pollInterval: TimeInterval = 5
+    func render() -> MenuBarRendering {
+        let snap = WiFiInfo.current()
+        if let ssid = snap.ssid, let rssi = snap.rssi {
+            return .text("\(ssid) \(rssi)dB")
+        }
+        if let ssid = snap.ssid {
+            return .text(ssid)
+        }
+        return .text("Wi-Fi —")
+    }
+}
+
+/// Catalogue of widget ids the Status mode shows as buttons.
+enum StatusWidgetID: String, CaseIterable {
+    case space, cpu, gpu, network, ram
+
+    var label: String {
+        switch self {
+        case .space:   return "Space"
+        case .cpu:     return "CPU"
+        case .gpu:     return "GPU"
+        case .network: return "Net"
+        case .ram:     return "RAM"
+        }
+    }
+
+    func makeWidget() -> MenuBarWidget {
+        switch self {
+        case .space:   return DiskWidget()
+        case .cpu:     return CPUWidget()
+        case .gpu:     return GPUWidget()
+        case .network: return NetworkWidget()
+        case .ram:     return RAMWidget()
+        }
+    }
+}

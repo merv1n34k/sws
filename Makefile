@@ -79,7 +79,13 @@ install: app
 	fi
 	@cp -R $(APP_BUNDLE) $(APPS_DIR)/
 	@xattr -dr com.apple.quarantine $(APPS_DIR)/$(APP_NAME).app 2>/dev/null || true
+	@# Reset the TCC Screen Recording grant so the new build's cdhash
+	@# is re-evaluated on first launch. Ad-hoc signed bundles can hold
+	@# stale TCC entries when the cdhash changes; resetting here makes
+	@# every install a clean slate.
+	@tccutil reset ScreenCapture com.merv1n34k.sws 2>/dev/null || true
 	@echo "Installed $(APPS_DIR)/$(APP_NAME).app"
+	@echo "(TCC ScreenCapture reset — grant again on first launch)"
 	@echo "Run with: open $(APPS_DIR)/$(APP_NAME).app"
 
 uninstall:

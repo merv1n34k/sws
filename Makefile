@@ -37,31 +37,42 @@ clean:
 run: build
 	.build/release/sws
 
-# Generates AppIcon.icns from the Swift drawing script.
-icon:
-	@rm -rf $(ICONSET) $(ICON_ICNS)
-	@swift scripts/generate-icon.swift $(ICONSET) >/dev/null
-	@iconutil -c icns $(ICONSET) -o $(ICON_ICNS)
+# Generated AppIcon.icns is a file target; the script and its output
+# are tracked so re-running `make icon` is a no-op when nothing changed.
+$(ICON_ICNS): scripts/generate-icon.swift
 	@rm -rf $(ICONSET)
-	@echo "Built $(ICON_ICNS)"
+	@swift $< $(ICONSET) >/dev/null
+	@iconutil -c icns $(ICONSET) -o $@
+	@rm -rf $(ICONSET)
+	@echo "Built $@"
 
-# Builds SWS.app — a proper macOS bundle with Info.plist, the
-# generated app icon, and an ad-hoc code signature. The bundle is
-# what TCC (Screen Recording, etc.) tracks; without it permissions
-# are invalidated on the next build.
-app: build icon
+icon: $(ICON_ICNS)
+
+# SWS.app is built only when its inputs (binary, plist, icon) are
+# newer than the bundle's signed marker. Keeping the bundle bytes
+# stable across rebuilds is what makes TCC (Screen Recording) hold
+# the permission grant — every byte-different rebuild invalidates it.
+$(APP_BUNDLE)/Contents/_CodeSignature/CodeResources: .build/release/sws Resources/Info.plist $(ICON_ICNS)
 	@rm -rf $(APP_BUNDLE)
-	@mkdir -p $(APP_BUNDLE)/Contents/MacOS
-	@mkdir -p $(APP_RES)
+	@mkdir -p $(APP_BUNDLE)/Contents/MacOS $(APP_RES)
 	@cp .build/release/sws $(APP_BIN)
 	@cp Resources/Info.plist $(APP_PLIST)
 	@cp $(ICON_ICNS) $(APP_RES)/AppIcon.icns
-	@codesign --force --deep --sign - $(APP_BUNDLE) >/dev/null
+	@codesign --force --deep --options runtime --sign - $(APP_BUNDLE) >/dev/null
 	@echo "Built $(APP_BUNDLE)"
 
+app: build $(APP_BUNDLE)/Contents/_CodeSignature/CodeResources
+
 install: app
-	@rm -rf $(APPS_DIR)/$(APP_NAME).app
+	@if [ -d $(APPS_DIR)/$(APP_NAME).app ]; then \
+		if diff -rq $(APP_BUNDLE) $(APPS_DIR)/$(APP_NAME).app >/dev/null 2>&1; then \
+			echo "Already installed and unchanged at $(APPS_DIR)/$(APP_NAME).app"; \
+			exit 0; \
+		fi; \
+		rm -rf $(APPS_DIR)/$(APP_NAME).app; \
+	fi
 	@cp -R $(APP_BUNDLE) $(APPS_DIR)/
+	@xattr -dr com.apple.quarantine $(APPS_DIR)/$(APP_NAME).app 2>/dev/null || true
 	@echo "Installed $(APPS_DIR)/$(APP_NAME).app"
 	@echo "Run with: open $(APPS_DIR)/$(APP_NAME).app"
 

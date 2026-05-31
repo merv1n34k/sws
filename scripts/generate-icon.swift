@@ -20,7 +20,7 @@
 
 import AppKit
 
-private let bgColor = NSColor(red: 0.09, green: 0.10, blue: 0.13, alpha: 1)
+private let bgColor = NSColor.black
 
 // MARK: - Knife composition
 
@@ -52,8 +52,8 @@ private func drawSwissKnife(canvasSize s: CGFloat, center: NSPoint, lineWidth: C
     body.lineWidth = lineWidth
     body.lineJoinStyle = .round
 
-    // o and + pushed further toward the body's tips.
-    let symOffset = bodyH * 0.38
+    // o and + sit a hair inside the body tips; tools attach here.
+    let symOffset = bodyH * 0.32
     let sawPivot = NSPoint(x: 0, y: +symOffset)
     let knifePivot = NSPoint(x: 0, y: -symOffset)
 
@@ -161,8 +161,12 @@ private func drawHalfPill(
         path.line(to: NSPoint(x: L, y: flatY))
     }
 
+    // Tip end (away from body) is rounded; body-side end is a sharp
+    // 90° corner so the half-pill meets the body cleanly without a
+    // rounded shoulder.
     if flatOnTop {
-        // Curve sweeps down from (L, r) to (0, r) via y=0.
+        // Curve sweeps down from (L, r) to (L-r, 0) then a straight
+        // edge to (0, 0), and a straight vertical back up to (0, r).
         path.appendArc(
             withCenter: NSPoint(x: L - r, y: arcCY),
             radius: r,
@@ -170,16 +174,11 @@ private func drawHalfPill(
             endAngle: -90,
             clockwise: true
         )
-        path.line(to: NSPoint(x: r, y: 0))
-        path.appendArc(
-            withCenter: NSPoint(x: r, y: arcCY),
-            radius: r,
-            startAngle: -90,
-            endAngle: -180,
-            clockwise: true
-        )
+        path.line(to: NSPoint(x: 0, y: 0))
+        path.line(to: NSPoint(x: 0, y: r))
     } else {
-        // Curve arches up from (L, 0) to (0, 0) via y=r.
+        // Curve arches up from (L, 0) to (L-r, r), straight to (0, r),
+        // and straight vertical down to (0, 0).
         path.appendArc(
             withCenter: NSPoint(x: L - r, y: arcCY),
             radius: r,
@@ -187,19 +186,14 @@ private func drawHalfPill(
             endAngle: 90,
             clockwise: false
         )
-        path.line(to: NSPoint(x: r, y: r))
-        path.appendArc(
-            withCenter: NSPoint(x: r, y: arcCY),
-            radius: r,
-            startAngle: 90,
-            endAngle: 180,
-            clockwise: false
-        )
+        path.line(to: NSPoint(x: 0, y: r))
+        path.line(to: NSPoint(x: 0, y: 0))
     }
 
     path.close()
     path.lineWidth = lineWidth
-    path.lineJoinStyle = .round
+    path.lineJoinStyle = .miter   // sharp 90° corner at the body-side end
+    path.miterLimit = 4
     path.lineCapStyle = .round
     path.stroke()
 }

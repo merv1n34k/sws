@@ -6,6 +6,14 @@ import AppKit
 protocol EnDeCodec {
     var displayName: String { get }
 
+    /// One-line description shown above the panes, telling the user
+    /// what this codec does + a tiny usage hint.
+    var hint: String { get }
+
+    /// Pre-fill text for the left pane on codec switch (when the
+    /// pane is empty) so the user has an example to riff on.
+    var samplePlaceholder: String { get }
+
     /// True if the codec supports editing on the right side
     /// (i.e. bidirectional). False = right side is read-only output.
     var bidirectional: Bool { get }
@@ -35,4 +43,5 @@ protocol EnDeCodec {
 extension EnDeCodec {
     func imageFor(leftText: String) -> NSImage? { nil }
     func textFrom(image: NSImage) -> String? { nil }
+    var samplePlaceholder: String { "" }
 }

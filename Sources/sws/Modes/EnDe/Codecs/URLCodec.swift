@@ -3,6 +3,8 @@ import AppKit
 
 struct URLCodec: EnDeCodec {
     let displayName = "URL"
+    let hint = "Percent-encode characters that aren't URL-safe. Edit either side."
+    let samplePlaceholder = "hello world & friends"
     let bidirectional = true
     let rightIsImage = false
 

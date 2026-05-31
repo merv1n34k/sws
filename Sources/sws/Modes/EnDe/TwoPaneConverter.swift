@@ -6,11 +6,12 @@ import AppKit
 final class TwoPaneConverter: NSView, NSTextViewDelegate {
     private let codecs: [EnDeCodec]
     private let picker = NSPopUpButton()
+    private let hintLabel = NSTextField(labelWithString: "")
     private let leftScroll: NSScrollView
     private let rightScroll: NSScrollView
     private let leftView: NSTextView
     private let rightView: NSTextView
-    private let rightImage = DropImageView()
+    private let rightImage: CopyableDropImageView
     private let rightContainer = NSView()
     private var codec: EnDeCodec
     private var muted = false        // re-entrancy guard while we cross-update
@@ -27,6 +28,7 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
         self.rightScroll = NSTextView.scrollableTextView()
         self.leftView = leftScroll.documentView as! NSTextView
         self.rightView = rightScroll.documentView as! NSTextView
+        self.rightImage = CopyableDropImageView()
 
         super.init(frame: .zero)
         wantsLayer = true
@@ -44,6 +46,11 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
         let topRow = NSStackView(views: [typeLabel, picker])
         topRow.spacing = 8
         topRow.alignment = .centerY
+
+        hintLabel.font = NSFont.systemFont(ofSize: 11)
+        hintLabel.textColor = .secondaryLabelColor
+        hintLabel.maximumNumberOfLines = 2
+        hintLabel.lineBreakMode = .byWordWrapping
 
         configureTextView(leftView, scroll: leftScroll)
         configureTextView(rightView, scroll: rightScroll)
@@ -83,9 +90,9 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
         split.spacing = 8
         split.translatesAutoresizingMaskIntoConstraints = false
 
-        let mainStack = NSStackView(views: [topRow, split])
+        let mainStack = NSStackView(views: [topRow, hintLabel, split])
         mainStack.orientation = .vertical
-        mainStack.spacing = 10
+        mainStack.spacing = 6
         mainStack.alignment = .leading
         mainStack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(mainStack)
@@ -95,6 +102,8 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
             mainStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             mainStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             mainStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+            hintLabel.leadingAnchor.constraint(equalTo: mainStack.leadingAnchor),
+            hintLabel.trailingAnchor.constraint(equalTo: mainStack.trailingAnchor),
             split.leadingAnchor.constraint(equalTo: mainStack.leadingAnchor),
             split.trailingAnchor.constraint(equalTo: mainStack.trailingAnchor),
         ])
@@ -135,9 +144,17 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
     }
 
     private func applyCodec() {
+        hintLabel.stringValue = codec.hint
         rightView.isEditable = codec.bidirectional
         rightScroll.isHidden = codec.rightIsImage
         rightImage.isHidden = !codec.rightIsImage
+        // Pre-fill the left pane with a sample if it's empty so the
+        // user has something to riff on for tricky codecs (JWT, QR, …).
+        if leftView.string.isEmpty && !codec.samplePlaceholder.isEmpty {
+            muted = true
+            leftView.string = codec.samplePlaceholder
+            muted = false
+        }
         runTransform(from: .left)
     }
 
@@ -179,9 +196,9 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
     }
 }
 
-// MARK: - Drop-aware image view
+// MARK: - Drop-aware + click-to-copy image view
 
-final class DropImageView: NSImageView {
+final class CopyableDropImageView: NSImageView {
     var onImageDropped: ((NSImage) -> Void)?
 
     override init(frame frameRect: NSRect) {
@@ -191,6 +208,25 @@ final class DropImageView: NSImageView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    override func resetCursorRects() {
+        if image != nil {
+            addCursorRect(bounds, cursor: .pointingHand)
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let img = image else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects([img])
+        // Brief visual flash so the user knows it worked.
+        let prevAlpha = alphaValue
+        alphaValue = 0.5
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            self?.alphaValue = prevAlpha
+        }
+    }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
 

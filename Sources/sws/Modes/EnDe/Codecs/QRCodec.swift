@@ -4,6 +4,8 @@ import Vision
 
 struct QRCodec: EnDeCodec {
     let displayName = "QR"
+    let hint = "Type on the left → QR on the right. Click the QR to copy it. Drop a QR image on the right to decode."
+    let samplePlaceholder = "https://example.com"
     let bidirectional = false
     let rightIsImage = true
 

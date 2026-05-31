@@ -102,15 +102,36 @@ final class ModeHostWindow: NSPanel {
         v.autoresizingMask = [.width, .height]
         container.addSubview(v)
 
-        if let size = mode.preferredSize {
-            var f = frame
-            f.size = size
-            setFrame(f, display: true, animate: false)
-        }
+        applyWindowSizing(for: mode)
 
         activeMode = mode
         mode.activate()
         focusActiveMode()
+    }
+
+    /// Honor the mode's preferredSize + fixedSize. If fixedSize the
+    /// window is locked (resizable handle disabled, min/max equal);
+    /// otherwise the window can be freely resized within sensible
+    /// bounds.
+    private func applyWindowSizing(for mode: Mode) {
+        guard let size = mode.preferredSize else {
+            minSize = NSSize(width: 200, height: 100)
+            maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            if !styleMask.contains(.resizable) { styleMask.insert(.resizable) }
+            return
+        }
+        if mode.fixedSize {
+            minSize = size
+            maxSize = size
+            styleMask.remove(.resizable)
+        } else {
+            minSize = NSSize(width: 200, height: 100)
+            maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            if !styleMask.contains(.resizable) { styleMask.insert(.resizable) }
+        }
+        var f = frame
+        f.size = size
+        setFrame(f, display: true, animate: false)
     }
 
     func show(mode: Mode) {

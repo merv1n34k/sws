@@ -5,6 +5,8 @@ import AppKit
 /// Right = pipe-delimited Markdown table.
 struct CSVMarkdownCodec: EnDeCodec {
     let displayName = "CSV ↔ Markdown"
+    let hint = "Comma- or tab-separated CSV on the left, Markdown table on the right."
+    let samplePlaceholder = "name,age,city\nAlice,30,Berlin\nBob,25,Paris"
     let bidirectional = true
     let rightIsImage = false
 

@@ -26,6 +26,12 @@ protocol Mode: AnyObject {
     /// Returns the responder that should receive keystrokes when the
     /// mode is active. Default: the mode's view.
     func preferredFirstResponder() -> NSResponder?
+
+    /// When true, the host window is locked to `preferredSize` (no
+    /// resize handle, no min/max breathing). Useful for dashboards
+    /// or other modes whose grid layout doesn't benefit from
+    /// resizing.
+    var fixedSize: Bool { get }
 }
 
 extension Mode {
@@ -35,6 +41,7 @@ extension Mode {
     func windowDidShow() {}
     func windowDidHide() {}
     func preferredFirstResponder() -> NSResponder? { view() }
+    var fixedSize: Bool { false }
 }
 
 /// Per-mode-instance config slice handed to a factory.

@@ -6,6 +6,8 @@ import Vision
 /// ASCII text). Reader accepts any 1D symbology Vision supports.
 struct BarcodeCodec: EnDeCodec {
     let displayName = "Barcode"
+    let hint = "Type on the left → Code 128 barcode on the right. Click to copy. Drop a barcode image to decode."
+    let samplePlaceholder = "12345-ABCDE"
     let bidirectional = false
     let rightIsImage = true
 

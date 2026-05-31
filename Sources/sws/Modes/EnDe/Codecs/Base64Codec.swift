@@ -3,6 +3,8 @@ import AppKit
 
 struct Base64Codec: EnDeCodec {
     let displayName = "Base64"
+    let hint = "Edit either side — text on the left, base64 on the right (bidirectional)."
+    let samplePlaceholder = "Hello, sws!"
     let bidirectional = true
     let rightIsImage = false
 

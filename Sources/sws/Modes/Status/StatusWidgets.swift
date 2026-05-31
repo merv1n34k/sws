@@ -7,43 +7,55 @@ final class CPUWidget: MenuBarWidget {
     let id = "cpu"
     let pollInterval: TimeInterval = 2
     private let sampler = SystemStats.CPUSampler()
+    private var lastValue = "—"
     func render() -> MenuBarRendering {
         let pct = sampler.sample() * 100
-        return .twoLines(top: "CPU", bottom: String(format: "%.0f%%", pct))
+        lastValue = String(format: "%.0f%%", pct)
+        return .twoLines(top: "CPU", bottom: lastValue)
     }
+    func currentValue() -> String { lastValue }
 }
 
 final class RAMWidget: MenuBarWidget {
     let id = "ram"
     let pollInterval: TimeInterval = 3
+    private var lastValue = "—"
     func render() -> MenuBarRendering {
         let (used, total) = SystemStats.memoryUsage()
         let usedGB = Double(used) / 1_073_741_824
         let totalGB = Double(total) / 1_073_741_824
+        lastValue = String(format: "%.1f / %.0f GB", usedGB, totalGB)
         return .twoLines(top: "RAM", bottom: String(format: "%.1f/%.0fG", usedGB, totalGB))
     }
+    func currentValue() -> String { lastValue }
 }
 
 final class DiskWidget: MenuBarWidget {
     let id = "space"
     let pollInterval: TimeInterval = 30
+    private var lastValue = "—"
     func render() -> MenuBarRendering {
         let (free, _) = SystemStats.diskUsage()
+        lastValue = SystemStats.humanBytes(free) + " free"
         return .twoLines(top: "SSD", bottom: SystemStats.humanBytes(free))
     }
+    func currentValue() -> String { lastValue }
 }
 
 final class NetworkWidget: MenuBarWidget {
     let id = "network"
     let pollInterval: TimeInterval = 1
     private let sampler = SystemStats.NetworkSampler()
+    private var lastValue = "—"
     func render() -> MenuBarRendering {
         let (down, up) = sampler.sample()
+        lastValue = "↑ \(SystemStats.humanRate(up))   ↓ \(SystemStats.humanRate(down))"
         return .twoLines(
             top:    "↑ " + SystemStats.humanRate(up),
             bottom: "↓ " + SystemStats.humanRate(down)
         )
     }
+    func currentValue() -> String { lastValue }
 }
 
 final class IPWidget: MenuBarWidget {
@@ -59,6 +71,7 @@ final class IPWidget: MenuBarWidget {
         NetworkInfo.shared.refreshPublicIP()
         return .twoLines(top: "IP", bottom: "…")
     }
+    func currentValue() -> String { NetworkInfo.shared.publicIP ?? "…" }
 }
 
 final class WiFiWidget: MenuBarWidget {
@@ -71,6 +84,11 @@ final class WiFiWidget: MenuBarWidget {
             return .twoLines(top: ssid, bottom: rssi)
         }
         return .twoLines(top: "Wi-Fi", bottom: "—")
+    }
+    func currentValue() -> String {
+        let s = WiFiInfo.current()
+        guard let ssid = s.ssid else { return "—" }
+        return s.rssi.map { "\(ssid)  \($0) dBm" } ?? ssid
     }
 }
 

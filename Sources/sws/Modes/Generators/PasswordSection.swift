@@ -38,9 +38,18 @@ final class PasswordSection: NSView, GeneratorsSection {
         let checkRow = NSStackView(views: [lowerCheck, upperCheck, digitCheck, symbolCheck])
         checkRow.spacing = 12
         checkRow.alignment = .centerY
+        // NSButton checkbox titles render in the OS-default color and
+        // ignore the window's appearance override in some configurations,
+        // so spell out white explicitly via attributedTitle.
         for c in [lowerCheck, upperCheck, digitCheck, symbolCheck] {
             c.state = .on
-            c.contentTintColor = .white
+            c.attributedTitle = NSAttributedString(
+                string: c.title,
+                attributes: [
+                    .foregroundColor: NSColor.white,
+                    .font: NSFont.systemFont(ofSize: 12),
+                ]
+            )
         }
 
         output.font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)

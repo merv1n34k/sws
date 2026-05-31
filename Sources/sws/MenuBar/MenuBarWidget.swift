@@ -8,8 +8,17 @@ protocol MenuBarWidget: AnyObject {
     var id: String { get }
     /// How often to refresh in seconds. 0 = manual refresh only.
     var pollInterval: TimeInterval { get }
-    /// Render the current value into a compact display payload.
+    /// Render the current value into a compact display payload
+    /// (menu bar).
     func render() -> MenuBarRendering
+    /// Plain-text value used by the Status dashboard buttons.
+    /// Independent of `render()` so dashboards and menu-bar items
+    /// can format differently.
+    func currentValue() -> String
+}
+
+extension MenuBarWidget {
+    func currentValue() -> String { "" }
 }
 
 /// What gets shown on the menu-bar button.
@@ -32,12 +41,11 @@ extension MenuBarRendering {
         .init(text: nil, attributedText: nil, image: img, tooltip: tooltip)
     }
 
-    /// Two-line widget: a small label on top, the live value below.
-    /// Renders to a template NSImage so macOS tints it the right color
-    /// for whichever menu-bar appearance is active.
+    /// Compact left-aligned 2-line template image for the menu bar.
+    /// Top line ≈ small label, bottom ≈ value. macOS tints it.
     static func twoLines(top: String, bottom: String, tooltip: String? = nil) -> Self {
-        let topFont = NSFont.systemFont(ofSize: 9, weight: .semibold)
-        let bottomFont = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium)
+        let topFont = NSFont.systemFont(ofSize: 8, weight: .semibold)
+        let bottomFont = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .medium)
 
         // Template images use only the alpha channel; the actual color
         // is drawn as black on transparent and macOS recolors it.
@@ -58,12 +66,10 @@ extension MenuBarRendering {
 
         let img = NSImage(size: NSSize(width: width, height: height))
         img.lockFocus()
-        // y origin is bottom-left in AppKit; menu-bar text is centered
-        // vertically within ~22pt. Top line ≈ 11pt baseline, bottom ≈ 0pt.
-        let topX = (width - topSize.width) / 2
-        let bottomX = (width - bottomSize.width) / 2
-        topNS.draw(at: NSPoint(x: topX, y: 11), withAttributes: topAttrs)
-        bottomNS.draw(at: NSPoint(x: bottomX, y: 0), withAttributes: bottomAttrs)
+        // Left-aligned: both lines start at x=2.
+        // y origin bottom-left; menu bar ~22pt: top baseline ≈ 12, bottom ≈ 1.
+        topNS.draw(at: NSPoint(x: 2, y: 12), withAttributes: topAttrs)
+        bottomNS.draw(at: NSPoint(x: 2, y: 1), withAttributes: bottomAttrs)
         img.unlockFocus()
         img.isTemplate = true
         return .init(text: nil, attributedText: nil, image: img, tooltip: tooltip)

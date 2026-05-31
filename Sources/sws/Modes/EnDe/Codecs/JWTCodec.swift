@@ -5,6 +5,8 @@ import AppKit
 /// printed header + payload JSON. One-way only (we don't sign).
 struct JWTCodec: EnDeCodec {
     let displayName = "JWT"
+    let hint = "Paste a JWT (xxx.yyy.zzz) on the left → decoded header + payload on the right."
+    let samplePlaceholder = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0IiwibmFtZSI6IkphbmUifQ.signature"
     let bidirectional = false
     let rightIsImage = false
 

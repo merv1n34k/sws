@@ -301,8 +301,9 @@ final class StatusStatButton: NSView {
 
     func updateValue() {
         guard let widget = widget else { return }
-        let r = widget.render()
-        valueField.stringValue = r.text ?? ""
+        // render() also samples — important for CPU/Network deltas.
+        _ = widget.render()
+        valueField.stringValue = widget.currentValue()
     }
 
     func setPinned(_ pinned: Bool) {

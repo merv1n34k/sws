@@ -56,6 +56,9 @@ Recording, and add `/Applications/SWS.app`.
 | `make app` | Build `.build/SWS.app` (idempotent — skips if inputs unchanged) |
 | `make install` | Build app, copy to `/Applications`, reset TCC |
 | `make uninstall` | Remove `/Applications/SWS.app` |
+| `make docs` | Run this documentation site locally (VitePress dev server) |
+| `make docs-build` | Build static docs into `docs/.vitepress/dist` |
+| `make docs-preview` | Build + serve the static docs |
 | `make clean` | `swift package clean` + remove `.build/` |
 
 ## Updating

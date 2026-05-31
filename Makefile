@@ -1,4 +1,4 @@
-.PHONY: setup dev build test test-all lint fmt clean run icon app install uninstall
+.PHONY: setup dev build test test-all lint fmt clean run icon app install uninstall docs docs-build docs-preview
 
 APP_NAME    := SWS
 APP_BUNDLE  := .build/$(APP_NAME).app
@@ -91,3 +91,16 @@ install: app
 uninstall:
 	@rm -rf $(APPS_DIR)/$(APP_NAME).app
 	@echo "Removed $(APPS_DIR)/$(APP_NAME).app"
+
+docs/node_modules: docs/package.json
+	@cd docs && bun install
+	@touch docs/node_modules
+
+docs: docs/node_modules
+	@cd docs && bun run dev
+
+docs-build: docs/node_modules
+	@cd docs && bun run build
+
+docs-preview: docs-build
+	@cd docs && bun run preview

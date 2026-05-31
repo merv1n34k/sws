@@ -67,9 +67,7 @@ Full schema and per-mode options in the
 Full documentation lives under `docs/` as a VitePress site:
 
 ```bash
-cd docs
-bun install
-bun run dev    # http://localhost:5173
+make docs    # serves http://localhost:5173 (runs `bun install` on first use)
 ```
 
 Highlights:

@@ -3,7 +3,7 @@ import AppKit
 final class ColorMode: Mode {
     let id: String
     let displayName: String
-    var preferredSize: NSSize? = NSSize(width: 380, height: 360)
+    var preferredSize: NSSize? = NSSize(width: 420, height: 410)
 
     private(set) var current: NSColor?
     private(set) var palette: [NSColor] = []

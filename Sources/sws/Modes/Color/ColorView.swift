@@ -9,6 +9,7 @@ final class ColorView: NSView {
     private let hslField = NSTextField(labelWithString: "—")
     private let hsbField = NSTextField(labelWithString: "—")
     private let paletteStrip = PaletteStrip()
+    private let contrastSection = ContrastSection()
     private let historyStrip = NSStackView()
     private let historyLabel = NSTextField(labelWithString: "Recent")
 
@@ -34,7 +35,13 @@ final class ColorView: NSView {
 
         paletteStrip.translatesAutoresizingMaskIntoConstraints = false
         paletteStrip.onClick = { [weak self] in self?.copyPaletteCSV() }
+        paletteStrip.onImageDropped = { [weak self] image in
+            self?.extractPalette(from: image)
+        }
         addSubview(paletteStrip)
+
+        contrastSection.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(contrastSection)
 
         let hexRow = makeRow(label: "HEX", field: hexField, copyTag: 0)
         let rgbRow = makeRow(label: "RGB", field: rgbField, copyTag: 1)
@@ -73,7 +80,11 @@ final class ColorView: NSView {
             paletteStrip.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
             paletteStrip.heightAnchor.constraint(equalToConstant: 28),
 
-            formats.topAnchor.constraint(equalTo: paletteStrip.bottomAnchor, constant: 10),
+            contrastSection.topAnchor.constraint(equalTo: paletteStrip.bottomAnchor, constant: 10),
+            contrastSection.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            contrastSection.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16),
+
+            formats.topAnchor.constraint(equalTo: contrastSection.bottomAnchor, constant: 10),
             formats.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
             formats.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
 
@@ -149,6 +160,14 @@ final class ColorView: NSView {
         }
     }
 
+    private func extractPalette(from image: NSImage) {
+        guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+        let palette = PaletteExtractor.extract(from: cg)
+        if !palette.isEmpty {
+            mode.apply(palette: palette)
+        }
+    }
+
     private func copyPaletteCSV() {
         let csv = mode.paletteCSV()
         guard !csv.isEmpty else { return }
@@ -178,11 +197,13 @@ final class ColorView: NSView {
 
 final class PaletteStrip: NSView {
     var onClick: (() -> Void)?
+    /// Image dropped by the user (file URL or pasteboard image).
+    var onImageDropped: ((NSImage) -> Void)?
     var colors: [NSColor] = [] {
         didSet { needsDisplay = true }
     }
 
-    private let placeholder = NSTextField(labelWithString: "drag on screen to extract a palette")
+    private let placeholder = NSTextField(labelWithString: "drag on screen — or drop an image here — to extract a palette")
     private let copiedLabel = NSTextField(labelWithString: "copied")
     private var hideCopiedTimer: Timer?
 
@@ -193,6 +214,7 @@ final class PaletteStrip: NSView {
         layer?.backgroundColor = NSColor(white: 0.15, alpha: 1.0).cgColor
         layer?.borderWidth = 1
         layer?.borderColor = NSColor(white: 0.25, alpha: 1.0).cgColor
+        registerForDraggedTypes([.fileURL, .png, .tiff])
 
         placeholder.font = NSFont.systemFont(ofSize: 10)
         placeholder.textColor = .secondaryLabelColor
@@ -257,6 +279,37 @@ final class PaletteStrip: NSView {
         hideCopiedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
             self?.copiedLabel.isHidden = true
         }
+    }
+
+    // MARK: - Drag-and-drop image
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.6).cgColor
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        layer?.borderColor = NSColor(white: 0.25, alpha: 1.0).cgColor
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        layer?.borderColor = NSColor(white: 0.25, alpha: 1.0).cgColor
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let pb = sender.draggingPasteboard
+        if let urls = pb.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+           let url = urls.first,
+           let img = NSImage(contentsOf: url) {
+            onImageDropped?(img)
+            return true
+        }
+        if let images = pb.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
+           let img = images.first {
+            onImageDropped?(img)
+            return true
+        }
+        return false
     }
 }
 

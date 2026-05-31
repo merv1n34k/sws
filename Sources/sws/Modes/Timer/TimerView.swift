@@ -6,12 +6,14 @@ final class TimerView: NSView {
     private let container: NSView
     private let stopwatch: StopwatchSection
     private let countdown: CountdownSection
+    private let pomodoro: PomodoroSection
     private let worldClock: WorldClockSection
+    private let whenIs: WhenIsSection
 
     init(mode: TimerMode) {
         self.mode = mode
         self.segmented = NSSegmentedControl(
-            labels: ["Stopwatch", "Countdown", "World Clock"],
+            labels: ["Stopwatch", "Countdown", "Pomodoro", "World", "When-is"],
             trackingMode: .selectOne,
             target: nil,
             action: nil
@@ -19,7 +21,9 @@ final class TimerView: NSView {
         self.container = NSView()
         self.stopwatch = StopwatchSection(mode: mode)
         self.countdown = CountdownSection(mode: mode)
+        self.pomodoro = PomodoroSection(mode: mode)
         self.worldClock = WorldClockSection(mode: mode)
+        self.whenIs = WhenIsSection()
 
         super.init(frame: .zero)
         wantsLayer = true
@@ -59,7 +63,9 @@ final class TimerView: NSView {
         switch sub {
         case .stopwatch:  segmented.selectedSegment = 0
         case .countdown:  segmented.selectedSegment = 1
-        case .worldClock: segmented.selectedSegment = 2
+        case .pomodoro:   segmented.selectedSegment = 2
+        case .worldClock: segmented.selectedSegment = 3
+        case .whenIs:     segmented.selectedSegment = 4
         }
     }
 
@@ -67,7 +73,9 @@ final class TimerView: NSView {
         switch sender.selectedSegment {
         case 0: mode.currentSubMode = .stopwatch
         case 1: mode.currentSubMode = .countdown
-        case 2: mode.currentSubMode = .worldClock
+        case 2: mode.currentSubMode = .pomodoro
+        case 3: mode.currentSubMode = .worldClock
+        case 4: mode.currentSubMode = .whenIs
         default: return
         }
         installCurrentSection()
@@ -83,9 +91,14 @@ final class TimerView: NSView {
         case .countdown:
             countdown.refresh()
             section = countdown
+        case .pomodoro:
+            pomodoro.refresh()
+            section = pomodoro
         case .worldClock:
             worldClock.refresh()
             section = worldClock
+        case .whenIs:
+            section = whenIs
         }
         section.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(section)

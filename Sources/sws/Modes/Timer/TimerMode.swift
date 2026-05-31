@@ -9,7 +9,7 @@ final class TimerMode: Mode {
     let displayName: String
     var preferredSize: NSSize? = NSSize(width: 380, height: 260)
 
-    enum SubMode: String, CaseIterable { case stopwatch, countdown, worldClock }
+    enum SubMode: String, CaseIterable { case stopwatch, countdown, pomodoro, worldClock, whenIs }
 
     // Persistent across view lifetime
     var currentSubMode: SubMode
@@ -25,6 +25,16 @@ final class TimerMode: Mode {
     private(set) var countdownTotal: TimeInterval = 5 * 60   // last entered duration
     private(set) var countdownEndAt: Date?                   // nil = not running
     private(set) var countdownPausedRemaining: TimeInterval? // non-nil = paused
+
+    // Pomodoro state
+    enum PomodoroPhase: String { case work, breakTime }
+    var pomodoroWorkDuration: TimeInterval = 25 * 60
+    var pomodoroBreakDuration: TimeInterval = 5 * 60
+    private(set) var pomodoroPhase: PomodoroPhase = .work
+    private(set) var pomodoroEndAt: Date?
+    private(set) var pomodoroPausedRemaining: TimeInterval?
+    private(set) var pomodoroCompletedCycles: Int = 0
+    private var pendingPomodoroNotification: String?
 
     private lazy var rootView = TimerView(mode: self)
     private var pendingCountdownNotification: String?
@@ -162,6 +172,104 @@ final class TimerMode: Mode {
             pendingCountdownNotification = nil
         }
     }
+
+    // MARK: - Pomodoro
+
+    var pomodoroIsRunning: Bool { pomodoroEndAt != nil }
+    var pomodoroIsPaused: Bool { pomodoroPausedRemaining != nil }
+
+    var pomodoroRemaining: TimeInterval {
+        if let paused = pomodoroPausedRemaining { return paused }
+        if let end = pomodoroEndAt { return max(0, end.timeIntervalSinceNow) }
+        return phaseDuration(pomodoroPhase)
+    }
+
+    func pomodoroStart() {
+        let dur = phaseDuration(pomodoroPhase)
+        pomodoroEndAt = Date().addingTimeInterval(dur)
+        pomodoroPausedRemaining = nil
+        schedulePomodoroNotification(remaining: dur)
+    }
+
+    func pomodoroPauseResume() {
+        if let end = pomodoroEndAt {
+            pomodoroPausedRemaining = max(0, end.timeIntervalSinceNow)
+            pomodoroEndAt = nil
+            cancelPomodoroNotification()
+        } else if let paused = pomodoroPausedRemaining {
+            pomodoroEndAt = Date().addingTimeInterval(paused)
+            pomodoroPausedRemaining = nil
+            schedulePomodoroNotification(remaining: paused)
+        }
+    }
+
+    func pomodoroSkipPhase() {
+        pomodoroEndAt = nil
+        pomodoroPausedRemaining = nil
+        cancelPomodoroNotification()
+        advancePomodoroPhase()
+    }
+
+    func pomodoroReset() {
+        pomodoroEndAt = nil
+        pomodoroPausedRemaining = nil
+        pomodoroPhase = .work
+        pomodoroCompletedCycles = 0
+        cancelPomodoroNotification()
+    }
+
+    func pomodoroDidComplete() {
+        pomodoroEndAt = nil
+        NSSound.beep()
+        if pomodoroPhase == .work { pomodoroCompletedCycles += 1 }
+        advancePomodoroPhase()
+        // Auto-start the next phase so the cycle flows.
+        pomodoroStart()
+    }
+
+    private func advancePomodoroPhase() {
+        pomodoroPhase = pomodoroPhase == .work ? .breakTime : .work
+    }
+
+    private func phaseDuration(_ phase: PomodoroPhase) -> TimeInterval {
+        phase == .work ? pomodoroWorkDuration : pomodoroBreakDuration
+    }
+
+    private func schedulePomodoroNotification(remaining: TimeInterval) {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+
+        let content = UNMutableNotificationContent()
+        content.title = "SWS Pomodoro"
+        content.body = pomodoroPhase == .work
+            ? "Work phase finished — take a break."
+            : "Break finished — back to work."
+        content.sound = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(
+            timeInterval: max(0.1, remaining),
+            repeats: false
+        )
+        let id = "sws.pomodoro.\(UUID().uuidString)"
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+        center.add(request) { error in
+            if let error = error {
+                NSLog("SWS: pomodoro notification failed: \(error)")
+            }
+        }
+        if let prev = pendingPomodoroNotification {
+            center.removePendingNotificationRequests(withIdentifiers: [prev])
+        }
+        pendingPomodoroNotification = id
+    }
+
+    private func cancelPomodoroNotification() {
+        if let id = pendingPomodoroNotification {
+            UNUserNotificationCenter.current()
+                .removePendingNotificationRequests(withIdentifiers: [id])
+            pendingPomodoroNotification = nil
+        }
+    }
 }
 
 enum TimerModeFactory: ModeFactory {
@@ -172,12 +280,19 @@ enum TimerModeFactory: ModeFactory {
             .flatMap { TimerMode.SubMode(rawValue: $0) } ?? .countdown
         let clocks = (instance.raw["worldClocks"] as? [String]) ?? ["UTC+0"]
         let displayName = (instance.raw["displayName"] as? String) ?? instance.id.capitalized
-        return TimerMode(
+        let mode = TimerMode(
             id: instance.id,
             displayName: displayName,
             defaultSubMode: defaultSub,
             worldClocks: clocks
         )
+        if let work = instance.raw["pomodoroWorkMinutes"] as? Double {
+            mode.pomodoroWorkDuration = work * 60
+        }
+        if let brk = instance.raw["pomodoroBreakMinutes"] as? Double {
+            mode.pomodoroBreakDuration = brk * 60
+        }
+        return mode
     }
 }
 

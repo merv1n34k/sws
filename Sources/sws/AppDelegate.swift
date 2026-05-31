@@ -204,8 +204,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "SWS")
+            let img = NSImage(systemSymbolName: "wrench.and.screwdriver.fill", accessibilityDescription: "SWS")
+                ?? NSImage(systemSymbolName: "wrench.fill", accessibilityDescription: "SWS")
                 ?? makeTextImage(">_")
+            img.isTemplate = true
+            button.image = img
         }
 
         let menu = NSMenu()

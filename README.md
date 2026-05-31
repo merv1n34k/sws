@@ -1,140 +1,91 @@
 # SWS — Swift Window Shell
 
-Lightweight native macOS menu bar app that opens a floating window on a
-global hotkey. The window hosts a **mode**: by default a terminal
-running `bc`, but Timer and Color (picker + palette extractor) modes
-ship in the box, and new modes drop in as source files under
-`Sources/sws/Modes/`.
+Lightweight native macOS menu-bar utility belt. Press a hotkey, a small
+floating window opens with the tool you asked for. Press it again, it
+goes away and your focus returns to whatever you were doing.
 
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue)
 ![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
-## Features
+## Modes
 
-- **Global hotkey opens sws** in the default mode (Shift+Option+S → `bc`)
-- **Built-in modes**:
-  - **Terminal** — any program, with full emulation via [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) (arrow keys, history, colors, readline). Configure one terminal mode per command (calc, python, ruby, …).
-  - **Timer** — stopwatch, countdown (`5m`, `1h30m`, `1:30:00`), world clock with UTC offsets or IANA zones. Countdown completion fires a system notification even if the window is hidden.
-  - **Color** — color picker + drag-to-extract palette. Click a pixel for a single color, or drag a rectangle and the captured region is clustered (sRGB → Oklab → k-means++) into 8 dominant colors. HEX/RGB/HSL/HSB rows with per-format copy; clicking the palette strip copies the whole palette as a hex CSV. The clusterer is a minimal local take on [Okolors](https://github.com/Ivordir/Okolors).
-- **Per-mode hotkeys** are intercepted only while sws is open — pressing them outside passes through to whatever app is frontmost.
-- **Borderless rounded window** that stays on top of all apps; **Escape** hides; **Option+Drag** moves.
-- **Tmux-style copy** in terminal mode: select text and it's copied on release.
-- **JSON config** at `~/.config/sws/config.json` with `Reload Config` from the menu.
+| Mode | Hotkey | What it does |
+|---|---|---|
+| **Terminal** | ⌥⇧S | Any CLI program (default: `bc -l`). Configure one per command. |
+| **Color** | ⌥⇧C | Pixel picker, drag-region palette extractor (Oklab k-means), HEX/RGB/HSL/HSB readouts, WCAG contrast checker. |
+| **Time** | ⌥⇧T | Stopwatch · Countdown · Pomodoro · World clocks · NLP date phrases ("20 hours from now"). |
+| **Status** | ⌥⇧D | Pinnable menu-bar widgets for CPU/RAM/SSD/Network + IP, Wi-Fi, ports & HTTP status lookups. |
+| **EnDe** | ⌥⇧E | Two-pane converter: Base64 · URL · CSV ↔ Markdown · JWT · QR · Barcode. |
+| **Generators** | ⌥⇧G | Password · UUID (v4/v7/ULID) · Lorem ipsum · Random picker. |
+| **Clipboard** | ⌥⇧V | Pasteboard history with search, 1 MB cap per entry, image thumbnails. |
+| **OCR** | ⌥⇧R | Drop an image/PDF, get text via Vision. |
+| **Scratchpad** | ⌥⇧W | Persistent monospace text. Autosaves. |
+
+All shortcuts are on the left half of the keyboard for one-hand reach.
+Mode hotkeys only fire when the window is already open — outside of that
+they pass through to whatever app is frontmost.
 
 ## Install
-
-### From release
-
-```bash
-# Download the latest release from GitHub
-tar xzf sws-v*.tar.gz
-sudo mv sws /usr/local/bin/
-```
-
-### From source
 
 ```bash
 git clone https://github.com/merv1n34k/sws.git
 cd sws
-make app       # builds .build/SWS.app
-make install   # copies SWS.app to /Applications
+make install      # builds SWS.app, copies to /Applications, resets TCC
 open /Applications/SWS.app
 ```
 
-The build wraps the binary in a proper `.app` bundle with an ad-hoc
-code signature. This matters for permissions: TCC (Screen Recording,
-Accessibility, etc.) tracks apps by bundle identity, so running a bare
-`.build/release/sws` binary loses its permissions on every rebuild.
+First launch will prompt for **Screen Recording** permission (needed by
+the color picker and OCR). Grant it in System Settings → Privacy &
+Security → Screen Recording, then quit and reopen.
 
-The first launch will prompt for **Screen Recording** permission
-(needed by the Color mode to read pixels). Grant it in
-**System Settings → Privacy & Security → Screen Recording**, then quit
-and reopen SWS.
+## Configure
 
-## Usage
-
-Launch `sws` — a terminal icon appears in the menu bar.
-
-| Action                          | Effect                                                        |
-|---------------------------------|---------------------------------------------------------------|
-| **Shift+Option+S**              | Open/hide window in default mode (calc)                       |
-| **Mode hotkey** (while open)    | Switch to that mode; press again to return to default         |
-| **Escape**                      | Hide window                                                   |
-| **Option+Drag**                 | Move window                                                   |
-| **Click+Drag** (terminal mode)  | Select text (auto-copied to clipboard)                        |
-
-Mode hotkeys only respond when the window is already open. So
-Shift+Option+T only switches to the Timer mode while sws is showing —
-it doesn't trigger anything when sws is hidden.
-
-## Configuration
-
-`~/.config/sws/config.json` (created on first launch):
+Mode list lives at `~/.config/sws/config.json`. Example:
 
 ```json
 {
   "version": 2,
   "defaultMode": "calc",
   "modes": [
-    {
-      "id": "calc",
-      "type": "terminal",
+    { "id": "calc", "type": "terminal",
       "hotkey": { "key": "s", "modifiers": ["shift", "option"] },
-      "command": "/usr/bin/bc",
-      "args": ["-l"]
-    },
-    {
-      "id": "python",
-      "type": "terminal",
-      "hotkey": { "key": "p", "modifiers": ["shift", "option"] },
-      "command": "/usr/bin/python3"
-    },
-    {
-      "id": "timer",
-      "type": "timer",
-      "hotkey": { "key": "t", "modifiers": ["shift", "option"] },
-      "defaultSubMode": "countdown",
-      "worldClocks": ["UTC+0", "UTC+3", "America/New_York"]
-    },
-    {
-      "id": "color",
-      "type": "color",
-      "hotkey": { "key": "c", "modifiers": ["shift", "option"] }
-    }
+      "command": "/usr/bin/bc", "args": ["-l"] },
+    { "id": "ende", "type": "ende",
+      "hotkey": { "key": "e", "modifiers": ["shift", "option"] } }
   ],
-  "width": 600,
-  "height": 400,
-  "rememberSize": true,
   "fontFamily": "Menlo",
-  "fontSize": 14,
-  "logInput": false
+  "fontSize": 14
 }
 ```
 
-The first mode in `modes` is the default unless `defaultMode` says
-otherwise. Old single-terminal v1 configs are migrated automatically on
-first launch.
+Full schema and per-mode options in the
+[Configuration guide](docs/guide/configuration.md).
 
-App-wide preferences (font, logging, remember-size) are also editable
-via **Preferences...** in the menu bar dropdown.
+## Docs
 
-## Adding a mode
+Full documentation lives under `docs/` as a VitePress site:
 
-1. Drop a new file under `Sources/sws/Modes/<YourMode>/` implementing the `Mode` and `ModeFactory` protocols (see `Modes/Mode.swift`).
-2. Register it in `Modes/Builtins.swift`:
-   ```swift
-   ModeRegistry.shared.register(YourModeFactory.self)
-   ```
-3. Add an entry to your `config.json` with `"type": "<your-typeId>"`.
+```bash
+cd docs
+bun install
+bun run dev    # http://localhost:5173
+```
 
-The core never references modes by name — `ModeRegistry` looks them up by `typeId`.
+Highlights:
+- [Installation](docs/guide/installation.md)
+- [Configuration](docs/guide/configuration.md)
+- [Hotkey conventions](docs/guide/hotkeys.md)
+- [Architecture](docs/guide/architecture.md)
+- [Adding a mode](docs/guide/adding-modes.md)
+- Per-mode reference under [docs/modes/](docs/modes/)
 
 ## Requirements
 
-- macOS 13+
-- Apple Silicon or Intel Mac
+- macOS 13+ (Ventura)
+- Apple Silicon or Intel
+- Xcode command line tools (`swift`, `codesign`, `iconutil`)
 
 ## License
 
-Distributed under MIT license, see `LICENSE` for more.
+MIT — see `LICENSE`.

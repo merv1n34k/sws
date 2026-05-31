@@ -24,7 +24,22 @@ private let bgColor = NSColor.black
 
 // MARK: - Knife composition
 
-private func drawSwissKnife(canvasSize s: CGFloat, center: NSPoint, lineWidth: CGFloat) {
+/// Draws the swiss-knife composition centered at `center` in the
+/// current graphics context.
+///   - strokeColor: stroke color for all lines (white for the app
+///     icon, black for the menu-bar template).
+///   - maskColor: when non-nil, the body interior is filled with this
+///     color so tool stems inside the body don't show. Pass nil for
+///     the menu-bar version where we want a transparent body interior;
+///     in that case we use even-odd clipping to keep tool drawing
+///     outside the body.
+private func drawSwissKnife(
+    canvasSize s: CGFloat,
+    center: NSPoint,
+    lineWidth: CGFloat,
+    strokeColor: NSColor = .white,
+    maskColor: NSColor? = NSColor.black
+) {
     guard let ctx = NSGraphicsContext.current?.cgContext else { return }
 
     ctx.saveGState()
@@ -35,8 +50,6 @@ private func drawSwissKnife(canvasSize s: CGFloat, center: NSPoint, lineWidth: C
     ctx.translateBy(x: center.x, y: center.y)
     ctx.rotate(by: .pi / 4)
 
-    // Body 1.5× the prior 0.50s; tool length unchanged; tool height
-    // bumped 1.2×; o and + pushed closer to the body's tips.
     let bodyW = s * 0.20
     let bodyH = s * 0.75
     let toolLen = s * 0.42
@@ -52,15 +65,27 @@ private func drawSwissKnife(canvasSize s: CGFloat, center: NSPoint, lineWidth: C
     body.lineWidth = lineWidth
     body.lineJoinStyle = .round
 
-    // o and + sit a hair inside the body tips; tools attach here.
     let symOffset = bodyH * 0.32
     let sawPivot = NSPoint(x: 0, y: +symOffset)
     let knifePivot = NSPoint(x: 0, y: -symOffset)
 
-    NSColor.white.setStroke()
+    // For the menu-bar (transparent body interior) variant, clip the
+    // tool drawing to the OUTSIDE of the body so the tool stems don't
+    // poke through the body's hollow interior.
+    let clippingTools = maskColor == nil
+    if clippingTools {
+        ctx.saveGState()
+        let clip = NSBezierPath()
+        let big: CGFloat = s * 4  // way bigger than the icon
+        clip.appendRect(NSRect(x: -big / 2, y: -big / 2, width: big, height: big))
+        clip.append(body)
+        clip.windingRule = .evenOdd
+        clip.addClip()
+    }
 
-    // 1. Saw — at the top pivot. Additional -45° (CW) rotation —
-    //    opposite direction from the previous +45°.
+    strokeColor.setStroke()
+
+    // 1. Saw — top pivot, additional -45° (CW) rotation.
     ctx.saveGState()
     ctx.translateBy(x: sawPivot.x, y: sawPivot.y)
     ctx.rotate(by: -.pi / 4)
@@ -73,8 +98,7 @@ private func drawSwissKnife(canvasSize s: CGFloat, center: NSPoint, lineWidth: C
     )
     ctx.restoreGState()
 
-    // 2. Knife — 180° base flip so it extends leftward; additional
-    //    -45° to match the saw's direction reversal.
+    // 2. Knife — 180° base flip + additional -45°.
     ctx.saveGState()
     ctx.translateBy(x: knifePivot.x, y: knifePivot.y)
     ctx.rotate(by: .pi)
@@ -88,12 +112,16 @@ private func drawSwissKnife(canvasSize s: CGFloat, center: NSPoint, lineWidth: C
     )
     ctx.restoreGState()
 
-    // 3. Mask body interior so tool stems don't bleed through.
-    bgColor.setFill()
-    body.fill()
+    if clippingTools {
+        ctx.restoreGState()
+    } else if let mask = maskColor {
+        // Mask body interior so tool stems don't bleed through.
+        mask.setFill()
+        body.fill()
+    }
 
-    // 4. Body outline on top.
-    NSColor.white.setStroke()
+    // Body outline on top.
+    strokeColor.setStroke()
     body.stroke()
 
     // 5. Lanyard hole at the saw pivot.
@@ -251,10 +279,44 @@ private func renderIconPNG(size: Int) -> Data? {
     return bitmap.representation(using: .png, properties: [:])
 }
 
+// MARK: - Menu-bar template variant (no background, no outline)
+
+private func renderMenuBarPNG(size: Int) -> Data? {
+    guard let bitmap = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: size,
+        pixelsHigh: size,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 32
+    ) else { return nil }
+
+    NSGraphicsContext.saveGraphicsState()
+    defer { NSGraphicsContext.restoreGraphicsState() }
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+
+    let s = CGFloat(size)
+    let lineWidth = max(1, s * 0.06)
+
+    drawSwissKnife(
+        canvasSize: s,
+        center: NSPoint(x: s / 2, y: s / 2),
+        lineWidth: lineWidth,
+        strokeColor: .black,
+        maskColor: nil
+    )
+
+    return bitmap.representation(using: .png, properties: [:])
+}
+
 // MARK: - Driver
 
 guard CommandLine.arguments.count >= 2 else {
-    FileHandle.standardError.write(Data("Usage: generate-icon.swift <output-iconset-dir>\n".utf8))
+    FileHandle.standardError.write(Data("Usage: generate-icon.swift <output-iconset-dir> [menubar-dir]\n".utf8))
     exit(1)
 }
 
@@ -284,4 +346,21 @@ for (name, size) in entries {
     try data.write(to: URL(fileURLWithPath: "\(outDir)/\(name)"))
 }
 
-print("wrote \(entries.count) PNGs to \(outDir)")
+if CommandLine.arguments.count >= 3 {
+    let menuDir = CommandLine.arguments[2]
+    try? FileManager.default.createDirectory(atPath: menuDir, withIntermediateDirectories: true)
+    let menuEntries: [(String, Int)] = [
+        ("MenuBarIcon.png", 22),
+        ("MenuBarIcon@2x.png", 44),
+    ]
+    for (name, size) in menuEntries {
+        guard let data = renderMenuBarPNG(size: size) else {
+            FileHandle.standardError.write(Data("failed to render \(name)\n".utf8))
+            exit(1)
+        }
+        try data.write(to: URL(fileURLWithPath: "\(menuDir)/\(name)"))
+    }
+    print("wrote \(entries.count) iconset PNGs to \(outDir) + \(menuEntries.count) menu-bar PNGs to \(menuDir)")
+} else {
+    print("wrote \(entries.count) PNGs to \(outDir)")
+}

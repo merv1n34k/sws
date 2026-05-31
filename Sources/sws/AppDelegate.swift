@@ -180,10 +180,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            let img = NSImage(systemSymbolName: "wrench.and.screwdriver.fill", accessibilityDescription: "SWS")
-                ?? NSImage(systemSymbolName: "wrench.fill", accessibilityDescription: "SWS")
+            let img = Bundle.main.image(forResource: "MenuBarIcon")
+                ?? NSImage(systemSymbolName: "wrench.and.screwdriver.fill", accessibilityDescription: "SWS")
                 ?? makeTextImage(">_")
             img.isTemplate = true
+            img.size = NSSize(width: 18, height: 18)
             button.image = img
         }
 

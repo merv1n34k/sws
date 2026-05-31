@@ -8,6 +8,7 @@ APP_RES     := $(APP_BUNDLE)/Contents/Resources
 APPS_DIR    := /Applications
 ICONSET     := .build/AppIcon.iconset
 ICON_ICNS   := .build/AppIcon.icns
+MENUBAR_DIR := .build/menubar
 
 setup:
 	swift package resolve
@@ -37,28 +38,33 @@ clean:
 run: build
 	.build/release/sws
 
-# Generated AppIcon.icns is a file target; the script and its output
-# are tracked so re-running `make icon` is a no-op when nothing changed.
-$(ICON_ICNS): scripts/generate-icon.swift
+# Generated AppIcon.icns and menu-bar PNGs share a single script run.
+$(ICON_ICNS) $(MENUBAR_DIR)/MenuBarIcon.png $(MENUBAR_DIR)/MenuBarIcon@2x.png: scripts/generate-icon.swift
+	@rm -rf $(ICONSET) $(MENUBAR_DIR)
+	@swift $< $(ICONSET) $(MENUBAR_DIR) >/dev/null
+	@iconutil -c icns $(ICONSET) -o $(ICON_ICNS)
 	@rm -rf $(ICONSET)
-	@swift $< $(ICONSET) >/dev/null
-	@iconutil -c icns $(ICONSET) -o $@
-	@rm -rf $(ICONSET)
-	@echo "Built $@"
+	@echo "Built $(ICON_ICNS) and menu-bar PNGs"
 
 icon: $(ICON_ICNS)
 
-# SWS.app is built only when its inputs (binary, plist, icon) are
-# newer than the bundle's signed marker. Keeping the bundle bytes
-# stable across rebuilds is what makes TCC (Screen Recording) hold
-# the permission grant — every byte-different rebuild invalidates it.
-$(APP_BUNDLE)/Contents/_CodeSignature/CodeResources: .build/release/sws Resources/Info.plist $(ICON_ICNS)
+# SWS.app rebuilds only when its inputs change. Keeping the bundle
+# bytes stable across rebuilds is what makes TCC (Screen Recording)
+# hold the permission grant.
+$(APP_BUNDLE)/Contents/_CodeSignature/CodeResources: \
+		.build/release/sws \
+		Resources/Info.plist \
+		$(ICON_ICNS) \
+		$(MENUBAR_DIR)/MenuBarIcon.png \
+		$(MENUBAR_DIR)/MenuBarIcon@2x.png
 	@rm -rf $(APP_BUNDLE)
 	@mkdir -p $(APP_BUNDLE)/Contents/MacOS $(APP_RES)
 	@cp .build/release/sws $(APP_BIN)
 	@cp Resources/Info.plist $(APP_PLIST)
 	@cp $(ICON_ICNS) $(APP_RES)/AppIcon.icns
-	@codesign --force --deep --options runtime --sign - $(APP_BUNDLE) >/dev/null
+	@cp $(MENUBAR_DIR)/MenuBarIcon.png $(APP_RES)/MenuBarIcon.png
+	@cp $(MENUBAR_DIR)/MenuBarIcon@2x.png $(APP_RES)/MenuBarIcon@2x.png
+	@codesign --force --deep --sign - $(APP_BUNDLE) >/dev/null
 	@echo "Built $(APP_BUNDLE)"
 
 app: build $(APP_BUNDLE)/Contents/_CodeSignature/CodeResources

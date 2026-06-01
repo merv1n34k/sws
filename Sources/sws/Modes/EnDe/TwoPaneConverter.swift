@@ -13,6 +13,11 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
     private let rightView: NSTextView
     private let rightImage: CopyableDropImageView
     private let rightContainer = NSView()
+    /// Image-output codecs (QR, Barcode) lock the right pane to a
+    /// square to minimize the output's horizontal real estate. The
+    /// constraints are flipped between codec switches.
+    private var rightAspectConstraint: NSLayoutConstraint?
+    private var split: NSStackView!
     private var codec: EnDeCodec
     private var muted = false        // re-entrancy guard while we cross-update
 
@@ -86,9 +91,15 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
         leftScroll.translatesAutoresizingMaskIntoConstraints = false
         let split = NSStackView(views: [leftScroll, rightContainer])
         split.orientation = .horizontal
-        split.distribution = .fillEqually
+        // .fill (not .fillEqually) so we can hand most of the width to
+        // the input pane when the right side is a square image. Equal
+        // text-on-text panes are achieved with leftScroll.widthAnchor ==
+        // rightContainer.widthAnchor (priority can be broken by the
+        // aspect constraint when an image codec is active).
+        split.distribution = .fill
         split.spacing = 8
         split.translatesAutoresizingMaskIntoConstraints = false
+        self.split = split
 
         let mainStack = NSStackView(views: [topRow, hintLabel, split])
         mainStack.orientation = .vertical
@@ -96,6 +107,12 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
         mainStack.alignment = .leading
         mainStack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(mainStack)
+
+        // Equal-width text panes when no codec aspect constraint is
+        // forcing the right pane narrower. Defaultable priority so the
+        // image-aspect lock can override.
+        let equalWidths = leftScroll.widthAnchor.constraint(equalTo: rightContainer.widthAnchor)
+        equalWidths.priority = .defaultHigh
 
         NSLayoutConstraint.activate([
             mainStack.topAnchor.constraint(equalTo: topAnchor, constant: 10),
@@ -106,6 +123,7 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
             hintLabel.trailingAnchor.constraint(equalTo: mainStack.trailingAnchor),
             split.leadingAnchor.constraint(equalTo: mainStack.leadingAnchor),
             split.trailingAnchor.constraint(equalTo: mainStack.trailingAnchor),
+            equalWidths,
         ])
 
         applyCodec()
@@ -148,6 +166,19 @@ final class TwoPaneConverter: NSView, NSTextViewDelegate {
         rightView.isEditable = codec.bidirectional
         rightScroll.isHidden = codec.rightIsImage
         rightImage.isHidden = !codec.rightIsImage
+
+        // For image-output codecs (QR/Barcode) lock the right pane to
+        // a square aspect ratio so it never grabs more horizontal space
+        // than its height. The leading equal-widths constraint at
+        // .defaultHigh priority loses to this required-priority lock.
+        rightAspectConstraint?.isActive = false
+        if codec.rightIsImage {
+            let aspect = rightContainer.widthAnchor.constraint(equalTo: rightContainer.heightAnchor)
+            aspect.priority = .required
+            aspect.isActive = true
+            rightAspectConstraint = aspect
+        }
+
         // Pre-fill the left pane with a sample if it's empty so the
         // user has something to riff on for tricky codecs (JWT, QR, …).
         if leftView.string.isEmpty && !codec.samplePlaceholder.isEmpty {

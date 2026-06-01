@@ -32,6 +32,10 @@ protocol Mode: AnyObject {
     /// or other modes whose grid layout doesn't benefit from
     /// resizing.
     var fixedSize: Bool { get }
+
+    /// Minimum window size when the mode is resizable. Overrides the
+    /// host window's default 200×100 floor. Ignored when fixedSize.
+    var minSize: NSSize? { get }
 }
 
 extension Mode {
@@ -42,6 +46,7 @@ extension Mode {
     func windowDidHide() {}
     func preferredFirstResponder() -> NSResponder? { view() }
     var fixedSize: Bool { false }
+    var minSize: NSSize? { nil }
 }
 
 /// Per-mode-instance config slice handed to a factory.

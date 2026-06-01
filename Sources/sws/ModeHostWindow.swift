@@ -156,8 +156,9 @@ final class ModeHostWindow: NSPanel {
     /// otherwise the window can be freely resized within sensible
     /// bounds.
     private func applyWindowSizing(for mode: Mode) {
+        let floor = mode.minSize ?? NSSize(width: 200, height: 100)
         guard let size = mode.preferredSize else {
-            minSize = NSSize(width: 200, height: 100)
+            minSize = floor
             maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
             if !styleMask.contains(.resizable) { styleMask.insert(.resizable) }
             return
@@ -167,12 +168,15 @@ final class ModeHostWindow: NSPanel {
             maxSize = size
             styleMask.remove(.resizable)
         } else {
-            minSize = NSSize(width: 200, height: 100)
+            minSize = floor
             maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
             if !styleMask.contains(.resizable) { styleMask.insert(.resizable) }
         }
         var f = frame
-        f.size = size
+        f.size = NSSize(
+            width: max(size.width, floor.width),
+            height: max(size.height, floor.height)
+        )
         setFrame(f, display: true, animate: false)
     }
 

@@ -14,7 +14,12 @@ final class OCRMode: Mode {
 
     func view() -> NSView { rootView }
 
-    func windowDidShow() {
+    /// `activate()` fires on every mode switch (including switching from
+    /// another already-visible mode). `windowDidShow()` only fires on
+    /// fresh-from-hidden showings, so it would miss the common flow:
+    /// "copy image somewhere, hit ⌥⇧R, expect OCR." Doing the auto-load
+    /// here covers both paths.
+    func activate() {
         rootView.autoLoadFromPasteboardIfAvailable()
     }
 }

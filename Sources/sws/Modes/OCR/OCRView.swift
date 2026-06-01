@@ -50,6 +50,7 @@ final class OCRView: NSView {
         outputView.textColor = .white
         outputView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         outputView.textContainerInset = NSSize(width: 8, height: 8)
+        outputView.toolTip = "Click to copy all"
 
         outputScroll.documentView = outputView
         outputScroll.hasVerticalScroller = true
@@ -70,10 +71,10 @@ final class OCRView: NSView {
             stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-            dropZone.heightAnchor.constraint(equalToConstant: 90),
+            dropZone.heightAnchor.constraint(equalToConstant: 160),
             dropZone.widthAnchor.constraint(equalTo: stack.widthAnchor),
             outputScroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            outputScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 180),
+            outputScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 140),
         ])
     }
 
@@ -82,9 +83,9 @@ final class OCRView: NSView {
         browseButton.action = #selector(browseForFile)
     }
 
-    /// Called when the OCR mode's window becomes visible. If the
-    /// pasteboard holds an image, run it through the pipeline without
-    /// the user having to click anything.
+    /// Called every time the OCR mode becomes active. If the pasteboard
+    /// holds an image we haven't OCR'd yet, run it. Tracked by
+    /// changeCount so we don't re-process the same clipboard state.
     func autoLoadFromPasteboardIfAvailable() {
         let pb = NSPasteboard.general
         guard pb.changeCount != lastAutoLoadedChangeCount else { return }
@@ -111,6 +112,18 @@ final class OCRView: NSView {
     }
 
     private func process(source: OCRPipeline.Source) {
+        // Show the image in the drop zone so the user can see what is
+        // about to be OCR'd. PDFs don't get a thumbnail — show the
+        // generic icon instead.
+        switch source {
+        case .image(let img):
+            dropZone.previewImage = img
+        case .pdf:
+            dropZone.previewImage = NSImage(systemSymbolName: "doc.richtext", accessibilityDescription: "PDF")
+        case .cgImage(let cg):
+            dropZone.previewImage = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        }
+
         statusLabel.stringValue = "Recognizing…"
         outputView.string = ""
         let lang = langPicker.indexOfSelectedItem == 0 ? nil : langPicker.titleOfSelectedItem
@@ -134,11 +147,24 @@ final class OCRView: NSView {
     }
 }
 
-// MARK: - Drop zone
+// MARK: - Drop zone with preview
 
+/// Drop zone that doubles as the image preview. When `previewImage` is
+/// nil it shows the placeholder hint; once set, it draws the image
+/// scaled-to-fit and the placeholder disappears.
 final class OCRDropZone: NSView {
     var onDrop: ((OCRPipeline.Source) -> Void)?
-    private let label = NSTextField(labelWithString: "Drop image or PDF here  ·  ⌥⇧A then ⌥⇧R to OCR clipboard")
+
+    var previewImage: NSImage? {
+        didSet {
+            imageView.image = previewImage
+            imageView.isHidden = previewImage == nil
+            label.isHidden = previewImage != nil
+        }
+    }
+
+    private let label = NSTextField(labelWithString: "Drop image or PDF here  ·  copy an image then open OCR")
+    private let imageView = NSImageView()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -149,12 +175,22 @@ final class OCRDropZone: NSView {
         layer?.backgroundColor = NSColor(white: 0.13, alpha: 1).cgColor
         registerForDraggedTypes([.fileURL, .png, .tiff])
 
+        imageView.imageScaling = .scaleProportionallyDown
+        imageView.isHidden = true
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(imageView)
+
         label.font = NSFont.systemFont(ofSize: 12)
         label.textColor = .secondaryLabelColor
         label.alignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
+
         NSLayoutConstraint.activate([
+            imageView.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            imageView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+            imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            imageView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             label.centerXAnchor.constraint(equalTo: centerXAnchor),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])

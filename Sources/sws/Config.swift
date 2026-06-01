@@ -33,6 +33,8 @@ struct SWSConfig {
     var fontFamily: String
     var fontSize: Double
     var logInput: Bool
+    var clipboardMaxEntries: Int
+    var clipboardMaxEntryBytes: Int
 
     static let currentVersion = 2
 
@@ -40,26 +42,57 @@ struct SWSConfig {
         version: currentVersion,
         defaultMode: "calc",
         modes: [
-            ModeConfig(
-                id: "calc",
-                type: "terminal",
-                hotkey: .default,
-                raw: [
-                    "id": "calc",
-                    "type": "terminal",
-                    "hotkey": ["key": "s", "modifiers": ["shift", "option"]],
-                    "command": "/usr/bin/bc",
-                    "args": ["-l"],
-                ]
-            )
+            ModeConfig(id: "calc", type: "terminal", hotkey: shortcut("s"), raw: [
+                "id": "calc", "type": "terminal",
+                "hotkey": ["key": "s", "modifiers": ["shift", "option"]],
+                "command": "/usr/bin/bc", "args": ["-l"],
+            ]),
+            ModeConfig(id: "color", type: "color", hotkey: shortcut("c"), raw: [
+                "id": "color", "type": "color",
+                "hotkey": ["key": "c", "modifiers": ["shift", "option"]],
+            ]),
+            ModeConfig(id: "timer", type: "timer", hotkey: shortcut("q"), raw: [
+                "id": "timer", "type": "timer",
+                "hotkey": ["key": "q", "modifiers": ["shift", "option"]],
+            ]),
+            ModeConfig(id: "status", type: "status", hotkey: shortcut("d"), raw: [
+                "id": "status", "type": "status",
+                "hotkey": ["key": "d", "modifiers": ["shift", "option"]],
+            ]),
+            ModeConfig(id: "ende", type: "ende", hotkey: shortcut("e"), raw: [
+                "id": "ende", "type": "ende",
+                "hotkey": ["key": "e", "modifiers": ["shift", "option"]],
+            ]),
+            ModeConfig(id: "generators", type: "generators", hotkey: shortcut("x"), raw: [
+                "id": "generators", "type": "generators",
+                "hotkey": ["key": "x", "modifiers": ["shift", "option"]],
+            ]),
+            ModeConfig(id: "clipboard", type: "clipboard", hotkey: shortcut("a"), raw: [
+                "id": "clipboard", "type": "clipboard",
+                "hotkey": ["key": "a", "modifiers": ["shift", "option"]],
+            ]),
+            ModeConfig(id: "ocr", type: "ocr", hotkey: shortcut("r"), raw: [
+                "id": "ocr", "type": "ocr",
+                "hotkey": ["key": "r", "modifiers": ["shift", "option"]],
+            ]),
+            ModeConfig(id: "scratchpad", type: "scratchpad", hotkey: shortcut("w"), raw: [
+                "id": "scratchpad", "type": "scratchpad",
+                "hotkey": ["key": "w", "modifiers": ["shift", "option"]],
+            ]),
         ],
         width: 600,
         height: 400,
         rememberSize: true,
         fontFamily: "Menlo",
         fontSize: 14,
-        logInput: false
+        logInput: false,
+        clipboardMaxEntries: 500,
+        clipboardMaxEntryBytes: 1_000_000
     )
+
+    private static func shortcut(_ key: String) -> ShortcutConfig {
+        ShortcutConfig(key: key, modifiers: ["shift", "option"])
+    }
 
     static var logFile: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -149,7 +182,9 @@ struct SWSConfig {
             rememberSize: (json["rememberSize"] as? Bool) ?? true,
             fontFamily: (json["fontFamily"] as? String) ?? "Menlo",
             fontSize: (json["fontSize"] as? Double) ?? 14,
-            logInput: (json["logInput"] as? Bool) ?? false
+            logInput: (json["logInput"] as? Bool) ?? false,
+            clipboardMaxEntries: (json["clipboardMaxEntries"] as? Int) ?? 500,
+            clipboardMaxEntryBytes: (json["clipboardMaxEntryBytes"] as? Int) ?? 1_000_000
         )
     }
 
@@ -265,6 +300,8 @@ struct SWSConfig {
             "fontFamily": fontFamily,
             "fontSize": fontSize,
             "logInput": logInput,
+            "clipboardMaxEntries": clipboardMaxEntries,
+            "clipboardMaxEntryBytes": clipboardMaxEntryBytes,
         ]
     }
 

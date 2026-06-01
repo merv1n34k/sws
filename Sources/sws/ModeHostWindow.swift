@@ -15,6 +15,8 @@ final class ModeHostWindow: NSPanel {
     private var previousApp: NSRunningApplication?
     private var workspaceObserver: NSObjectProtocol?
     private var container: NSView!
+    private var dragMonitor: Any?
+    private var dragOrigin: NSPoint?
 
     var onSizeChanged: ((Double, Double) -> Void)?
 
@@ -59,11 +61,51 @@ final class ModeHostWindow: NSPanel {
         )
 
         installWorkspaceObserver()
+        installOptionDragMonitor()
     }
 
     deinit {
         if let observer = workspaceObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+        if let monitor = dragMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
+
+    /// ⌥+drag moves the window from anywhere inside its content. Works
+    /// for every hosted mode — the legacy per-mode handler in
+    /// TerminalView is removed. Only consumes the event while the
+    /// gesture is active so normal clicks still reach the mode's view.
+    private func installOptionDragMonitor() {
+        dragMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
+        ) { [weak self] event in
+            guard let self = self, event.window === self else { return event }
+            switch event.type {
+            case .leftMouseDown:
+                if event.modifierFlags.contains(.option) {
+                    self.dragOrigin = event.locationInWindow
+                    return nil
+                }
+            case .leftMouseDragged:
+                if let origin = self.dragOrigin {
+                    let current = event.locationInWindow
+                    var f = self.frame
+                    f.origin.x += current.x - origin.x
+                    f.origin.y += current.y - origin.y
+                    self.setFrameOrigin(f.origin)
+                    return nil
+                }
+            case .leftMouseUp:
+                if self.dragOrigin != nil {
+                    self.dragOrigin = nil
+                    return nil
+                }
+            default:
+                break
+            }
+            return event
         }
     }
 

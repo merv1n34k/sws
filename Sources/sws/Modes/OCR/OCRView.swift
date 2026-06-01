@@ -3,13 +3,12 @@ import UniformTypeIdentifiers
 
 final class OCRView: NSView {
     private let dropZone = OCRDropZone()
-    private let pasteButton = NSButton(title: "Paste from clipboard", target: nil, action: nil)
     private let browseButton = NSButton(title: "Browse…", target: nil, action: nil)
     private let langPicker = NSPopUpButton()
     private let statusLabel = NSTextField(labelWithString: "")
     private let outputScroll = NSScrollView()
-    private let outputView = NSTextView()
-    private let copyButton = NSButton(title: "Copy all", target: nil, action: nil)
+    private let outputView = ClickToCopyTextView()
+    private var lastAutoLoadedChangeCount: Int = -1
 
     init() {
         super.init(frame: .zero)
@@ -24,23 +23,19 @@ final class OCRView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     private func buildLayout() {
-        // Drop zone
         dropZone.translatesAutoresizingMaskIntoConstraints = false
         dropZone.onDrop = { [weak self] source in self?.process(source: source) }
         addSubview(dropZone)
 
-        // Action buttons
-        pasteButton.bezelStyle = .rounded
         browseButton.bezelStyle = .rounded
 
-        // Language picker
         langPicker.bezelStyle = .rounded
         langPicker.addItem(withTitle: "Auto")
         for lang in OCRPipeline.supportedLanguages {
             langPicker.addItem(withTitle: lang)
         }
 
-        let actions = NSStackView(views: [pasteButton, browseButton, NSView(), label("Language"), langPicker])
+        let actions = NSStackView(views: [browseButton, NSView(), label("Language"), langPicker])
         actions.orientation = .horizontal
         actions.spacing = 8
         actions.alignment = .centerY
@@ -64,9 +59,7 @@ final class OCRView: NSView {
         outputScroll.layer?.masksToBounds = true
         outputScroll.translatesAutoresizingMaskIntoConstraints = false
 
-        copyButton.bezelStyle = .rounded
-
-        let stack = NSStackView(views: [dropZone, actions, statusLabel, outputScroll, copyButton])
+        let stack = NSStackView(views: [dropZone, actions, statusLabel, outputScroll])
         stack.orientation = .vertical
         stack.spacing = 8
         stack.alignment = .left
@@ -85,22 +78,20 @@ final class OCRView: NSView {
     }
 
     private func wire() {
-        pasteButton.target = self
-        pasteButton.action = #selector(pasteFromClipboard)
         browseButton.target = self
         browseButton.action = #selector(browseForFile)
-        copyButton.target = self
-        copyButton.action = #selector(copyAll)
     }
 
-    @objc private func pasteFromClipboard() {
+    /// Called when the OCR mode's window becomes visible. If the
+    /// pasteboard holds an image, run it through the pipeline without
+    /// the user having to click anything.
+    func autoLoadFromPasteboardIfAvailable() {
         let pb = NSPasteboard.general
-        if let images = pb.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
-           let img = images.first {
-            process(source: .image(img))
-        } else {
-            statusLabel.stringValue = "Clipboard has no image."
-        }
+        guard pb.changeCount != lastAutoLoadedChangeCount else { return }
+        guard let images = pb.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
+              let img = images.first else { return }
+        lastAutoLoadedChangeCount = pb.changeCount
+        process(source: .image(img))
     }
 
     @objc private func browseForFile() {
@@ -119,12 +110,6 @@ final class OCRView: NSView {
         }
     }
 
-    @objc private func copyAll() {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(outputView.string, forType: .string)
-    }
-
     private func process(source: OCRPipeline.Source) {
         statusLabel.stringValue = "Recognizing…"
         outputView.string = ""
@@ -134,7 +119,7 @@ final class OCRView: NSView {
             if let result = result {
                 self.outputView.string = result.joined
                 let pageWord = result.pages.count == 1 ? "page" : "pages"
-                self.statusLabel.stringValue = "\(result.pages.count) \(pageWord), \(result.joined.count) chars."
+                self.statusLabel.stringValue = "\(result.pages.count) \(pageWord), \(result.joined.count) chars — click text to copy all."
             } else {
                 self.statusLabel.stringValue = "Failed to read."
             }
@@ -153,7 +138,7 @@ final class OCRView: NSView {
 
 final class OCRDropZone: NSView {
     var onDrop: ((OCRPipeline.Source) -> Void)?
-    private let label = NSTextField(labelWithString: "Drop image or PDF here")
+    private let label = NSTextField(labelWithString: "Drop image or PDF here  ·  ⌥⇧A then ⌥⇧R to OCR clipboard")
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)

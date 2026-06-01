@@ -4,7 +4,7 @@ Pasteboard history with search and persistence.
 
 ## Hotkey
 
-Default: **⌥⇧V** (Vault).
+Default: **⌥⇧A** (cliboArd).
 
 ## Layout
 
@@ -33,13 +33,21 @@ Default: **⌥⇧V** (Vault).
 
 To keep storage bounded:
 
-| Cap | Value |
-|---|---|
-| Total entries | 50 |
-| Text per entry | 1 MB (truncated past that) |
-| Image per entry | 1 MB (skipped past that, shown as `(image too large, X MB)`) |
+| Cap | Default | Configurable as |
+|---|---|---|
+| Total entries | 500 | `clipboardMaxEntries` |
+| Text per entry | 1 MB (truncated past that) | `clipboardMaxEntryBytes` |
+| Image per entry | 1 MB (skipped past that, shown as `(image too large, X MB)`) | `clipboardMaxEntryBytes` |
 
 When the entry cap is hit, the oldest entry is dropped.
+
+Set higher values in `~/.config/sws/config.json` for a more persistent
+history:
+
+```json
+"clipboardMaxEntries": 5000,
+"clipboardMaxEntryBytes": 5000000
+```
 
 ## Persistence
 

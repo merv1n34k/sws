@@ -5,7 +5,7 @@ UUID · Lorem · Random**.
 
 ## Hotkey
 
-Default: **⌥⇧G**.
+Default: **⌥⇧X**.
 
 ## Password
 

@@ -17,6 +17,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.appearance = NSAppearance(named: .darkAqua)
         registerBuiltInModes()
         config = SWSConfig.load()
+        ClipboardMonitor.shared.configure(
+            maxEntries: config.clipboardMaxEntries,
+            maxEntryBytes: config.clipboardMaxEntryBytes
+        )
         buildModes()
         setupMainMenu()
         setupStatusItem()
@@ -248,6 +252,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyConfig(_ newConfig: SWSConfig) {
         config = newConfig
         config.save()
+        ClipboardMonitor.shared.configure(
+            maxEntries: config.clipboardMaxEntries,
+            maxEntryBytes: config.clipboardMaxEntryBytes
+        )
         buildModes()
         setupStatusItem()             // rebuilds mode submenu
         registerDefaultHotkeyOnly()

@@ -13,6 +13,10 @@ final class OCRMode: Mode {
     }
 
     func view() -> NSView { rootView }
+
+    func windowDidShow() {
+        rootView.autoLoadFromPasteboardIfAvailable()
+    }
 }
 
 enum OCRModeFactory: ModeFactory {

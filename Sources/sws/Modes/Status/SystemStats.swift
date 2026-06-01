@@ -140,4 +140,29 @@ enum SystemStats {
         let mb = kb / 1024
         return String(format: "%.1f MB/s", mb)
     }
+
+    /// Fixed-width throughput, suitable for menu-bar widgets that
+    /// must not shift width as the value changes. Always 8 chars:
+    /// "  0 KB/s" / "999 KB/s" / "9.9 MB/s" / "999 MB/s".
+    static func humanRateFixed(_ bps: Double) -> String {
+        let kb = bps / 1024
+        if kb < 1024 { return String(format: "%3d KB/s", Int(kb.rounded())) }
+        let mb = kb / 1024
+        if mb < 10 { return String(format: "%.1f MB/s", mb) }
+        return String(format: "%3d MB/s", Int(mb.rounded()))
+    }
+
+    /// Fixed-width short byte string for menu-bar use. 6 chars:
+    /// "999 KB", "9.9 MB", "999 MB", "9.9 GB", "999 GB", "9.9 TB".
+    static func humanBytesShort(_ b: Int64) -> String {
+        let kb = Double(b) / 1024
+        if kb < 1024 { return String(format: "%3d KB", Int(kb.rounded())) }
+        let mb = kb / 1024
+        if mb < 10 { return String(format: "%.1f MB", mb) }
+        if mb < 1024 { return String(format: "%3d MB", Int(mb.rounded())) }
+        let gb = mb / 1024
+        if gb < 10 { return String(format: "%.1f GB", gb) }
+        if gb < 1024 { return String(format: "%3d GB", Int(gb.rounded())) }
+        return String(format: "%.1f TB", gb / 1024)
+    }
 }

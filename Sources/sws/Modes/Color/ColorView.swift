@@ -2,12 +2,12 @@ import AppKit
 
 final class ColorView: NSView {
     private let mode: ColorMode
-    private let hint = NSTextField(labelWithString: "click anywhere to pick · drag for a palette")
+    private let hint = NSTextField(labelWithString: "click anywhere to pick · drag for a palette · click a value to copy")
     private let swatch = NSView()
-    private let hexField = NSTextField(labelWithString: "—")
-    private let rgbField = NSTextField(labelWithString: "—")
-    private let hslField = NSTextField(labelWithString: "—")
-    private let hsbField = NSTextField(labelWithString: "—")
+    private let hexField = ClickToCopyLabel()
+    private let rgbField = ClickToCopyLabel()
+    private let hslField = ClickToCopyLabel()
+    private let hsbField = ClickToCopyLabel()
     private let paletteStrip = PaletteStrip()
     private let contrastSection = ContrastSection()
     private let historyStrip = NSStackView()
@@ -43,10 +43,10 @@ final class ColorView: NSView {
         contrastSection.translatesAutoresizingMaskIntoConstraints = false
         addSubview(contrastSection)
 
-        let hexRow = makeRow(label: "HEX", field: hexField, copyTag: 0)
-        let rgbRow = makeRow(label: "RGB", field: rgbField, copyTag: 1)
-        let hslRow = makeRow(label: "HSL", field: hslField, copyTag: 2)
-        let hsbRow = makeRow(label: "HSB", field: hsbField, copyTag: 3)
+        let hexRow = makeRow(label: "HEX", field: hexField)
+        let rgbRow = makeRow(label: "RGB", field: rgbField)
+        let hslRow = makeRow(label: "HSL", field: hslField)
+        let hsbRow = makeRow(label: "HSB", field: hsbField)
 
         let formats = NSStackView(views: [hexRow, rgbRow, hslRow, hsbRow])
         formats.orientation = .vertical
@@ -101,7 +101,7 @@ final class ColorView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    private func makeRow(label: String, field: NSTextField, copyTag: Int) -> NSStackView {
+    private func makeRow(label: String, field: ClickToCopyLabel) -> NSStackView {
         let labelView = NSTextField(labelWithString: label)
         labelView.font = NSFont.systemFont(ofSize: 11, weight: .medium)
         labelView.textColor = .secondaryLabelColor
@@ -110,18 +110,10 @@ final class ColorView: NSView {
 
         field.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
         field.textColor = .white
-        field.isSelectable = true
-        field.isEditable = false
-        field.drawsBackground = false
-        field.isBezeled = false
         field.lineBreakMode = .byTruncatingTail
+        field.toolTip = "Click to copy"
 
-        let copy = NSButton(title: "Copy", target: self, action: #selector(copyTapped(_:)))
-        copy.bezelStyle = .inline
-        copy.tag = copyTag
-        copy.controlSize = .small
-
-        let row = NSStackView(views: [labelView, field, copy])
+        let row = NSStackView(views: [labelView, field])
         row.orientation = .horizontal
         row.alignment = .firstBaseline
         row.spacing = 8
@@ -131,19 +123,24 @@ final class ColorView: NSView {
     func refresh() {
         if let color = mode.current {
             swatch.layer?.backgroundColor = color.cgColor
-            hexField.stringValue = ColorFormat.hex(color)
-            rgbField.stringValue = ColorFormat.rgb(color)
-            hslField.stringValue = ColorFormat.hsl(color)
-            hsbField.stringValue = ColorFormat.hsb(color)
+            assignReadout(hexField, ColorFormat.hex(color))
+            assignReadout(rgbField, ColorFormat.rgb(color))
+            assignReadout(hslField, ColorFormat.hsl(color))
+            assignReadout(hsbField, ColorFormat.hsb(color))
         } else {
             swatch.layer?.backgroundColor = NSColor(white: 0.2, alpha: 1.0).cgColor
-            hexField.stringValue = "—"
-            rgbField.stringValue = "—"
-            hslField.stringValue = "—"
-            hsbField.stringValue = "—"
+            assignReadout(hexField, "—")
+            assignReadout(rgbField, "—")
+            assignReadout(hslField, "—")
+            assignReadout(hsbField, "—")
         }
         paletteStrip.colors = mode.palette
         refreshHistory()
+    }
+
+    private func assignReadout(_ field: ClickToCopyLabel, _ value: String) {
+        field.stringValue = value
+        field.copyValue = value == "—" ? "" : value
     }
 
     private func refreshHistory() {
@@ -177,20 +174,6 @@ final class ColorView: NSView {
         paletteStrip.flashCopied()
     }
 
-    @objc private func copyTapped(_ sender: NSButton) {
-        let value: String
-        switch sender.tag {
-        case 0: value = hexField.stringValue
-        case 1: value = rgbField.stringValue
-        case 2: value = hslField.stringValue
-        case 3: value = hsbField.stringValue
-        default: return
-        }
-        guard value != "—" else { return }
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(value, forType: .string)
-    }
 }
 
 // MARK: - Palette strip

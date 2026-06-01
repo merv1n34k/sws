@@ -14,11 +14,11 @@ goes away and your focus returns to whatever you were doing.
 |---|---|---|
 | **Terminal** | ⌥⇧S | Any CLI program (default: `bc -l`). Configure one per command. |
 | **Color** | ⌥⇧C | Pixel picker, drag-region palette extractor (Oklab k-means), HEX/RGB/HSL/HSB readouts, WCAG contrast checker. |
-| **Time** | ⌥⇧T | Stopwatch · Countdown · Pomodoro · World clocks · NLP date phrases ("20 hours from now"). |
+| **Time** | ⌥⇧Q | Stopwatch · Countdown · Pomodoro · World clocks · NLP date phrases ("20 hours from now"). |
 | **Status** | ⌥⇧D | Pinnable menu-bar widgets for CPU/RAM/SSD/Network + IP, Wi-Fi, ports & HTTP status lookups. |
 | **EnDe** | ⌥⇧E | Two-pane converter: Base64 · URL · CSV ↔ Markdown · JWT · QR · Barcode. |
-| **Generators** | ⌥⇧G | Password · UUID (v4/v7/ULID) · Lorem ipsum · Random picker. |
-| **Clipboard** | ⌥⇧V | Pasteboard history with search, 1 MB cap per entry, image thumbnails. |
+| **Generators** | ⌥⇧X | Password · UUID (v4/v7/ULID) · Lorem ipsum · Random picker. |
+| **Clipboard** | ⌥⇧A | Pasteboard history with search, configurable cap, image thumbnails. |
 | **OCR** | ⌥⇧R | Drop an image/PDF, get text via Vision. |
 | **Scratchpad** | ⌥⇧W | Persistent monospace text. Autosaves. |
 

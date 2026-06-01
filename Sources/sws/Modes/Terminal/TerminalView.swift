@@ -41,7 +41,6 @@ final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
     let terminal: SilentTerminalView
     private var config: TerminalViewConfig
     private var processRunning = false
-    private var dragOrigin: NSPoint?
 
     // Logging
     private var logHandle: FileHandle?
@@ -77,7 +76,7 @@ final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
             setupLogging()
         }
 
-        installDragHandler()
+        installSelectionCopyHandler()
 
         terminal.translatesAutoresizingMaskIntoConstraints = false
         addSubview(terminal)
@@ -221,43 +220,18 @@ final class TerminalView: NSView, LocalProcessTerminalViewDelegate {
         return out
     }
 
-    // MARK: - Option+drag to move window
+    // MARK: - tmux-style copy on mouse release
 
-    private func installDragHandler() {
-        NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
-            guard let self = self, self.window?.isVisible == true else { return event }
+    private func installSelectionCopyHandler() {
+        NSEvent.addLocalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] event in
+            guard let self = self, event.window === self.window else { return event }
             let loc = event.locationInWindow
             let localPoint = self.terminal.convert(loc, from: nil)
-            let inTerminal = self.terminal.bounds.contains(localPoint)
-
-            switch event.type {
-            case .leftMouseDown:
-                if event.modifierFlags.contains(.option) && inTerminal {
-                    self.dragOrigin = event.locationInWindow
-                    return nil // consume event
-                }
-            case .leftMouseDragged:
-                if let origin = self.dragOrigin, let win = self.window {
-                    let current = event.locationInWindow
-                    var frame = win.frame
-                    frame.origin.x += current.x - origin.x
-                    frame.origin.y += current.y - origin.y
-                    win.setFrameOrigin(frame.origin)
-                    return nil
-                }
-            case .leftMouseUp:
-                if self.dragOrigin != nil {
-                    self.dragOrigin = nil
-                    return nil
-                }
-                // tmux-style: copy selection to clipboard on mouse release
-                if inTerminal, let text = self.terminal.getSelection(), !text.isEmpty {
-                    let pb = NSPasteboard.general
-                    pb.clearContents()
-                    pb.setString(text, forType: .string)
-                }
-            default:
-                break
+            guard self.terminal.bounds.contains(localPoint) else { return event }
+            if let text = self.terminal.getSelection(), !text.isEmpty {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(text, forType: .string)
             }
             return event
         }

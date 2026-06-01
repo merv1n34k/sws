@@ -8,11 +8,27 @@ final class ClipboardMonitor {
     static let didChangeNotification = Notification.Name("sws.clipboard.didChange")
 
     /// Per-entry cap. Text over this is truncated; images over this
-    /// are dropped (only metadata kept).
-    private let perEntryCap = 1_000_000   // 1 MB
-    /// Maximum number of entries to keep.
-    private let maxEntries = 50
+    /// are dropped (only metadata kept). Adjustable via config.
+    private var perEntryCap = 1_000_000   // 1 MB
+    /// Maximum number of entries to keep. Adjustable via config.
+    private var maxEntries = 500
     private let pollInterval: TimeInterval = 0.5
+
+    /// Apply user-supplied caps from config. Trims existing history if
+    /// the new cap is lower.
+    func configure(maxEntries: Int, maxEntryBytes: Int) {
+        self.maxEntries = max(1, maxEntries)
+        self.perEntryCap = max(1024, maxEntryBytes)
+        if history.entries.count > self.maxEntries {
+            let dropping = history.entries.suffix(history.entries.count - self.maxEntries)
+            for d in dropping where d.imagePath != nil {
+                try? FileManager.default.removeItem(atPath: d.imagePath!)
+            }
+            history.entries.removeLast(history.entries.count - self.maxEntries)
+            store.save(history)
+            NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
+        }
+    }
 
     private let store = PersistentStore<ClipboardHistory>(key: "clipboard.json")
     private(set) var history: ClipboardHistory

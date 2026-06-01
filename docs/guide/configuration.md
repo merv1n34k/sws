@@ -36,6 +36,8 @@ reopen.
 | `rememberSize` | `true` | Persist size changes back into this file. |
 | `fontFamily` / `fontSize` | `Menlo / 14` | Used by terminal modes for the PTY view. |
 | `logInput` | `false` | Mirror terminal output (post-ANSI stripping) to `~/.sws.log`. |
+| `clipboardMaxEntries` | `500` | Maximum entries kept in the Clipboard mode history. |
+| `clipboardMaxEntryBytes` | `1000000` | Per-entry size cap (bytes). Text over the cap is truncated; images over it are stored as a placeholder. |
 
 ## Mode entry
 
@@ -95,7 +97,7 @@ Every entry in `modes` has these common fields, plus type-specific extras:
     },
     {
       "id": "timer", "type": "timer",
-      "hotkey": { "key": "t", "modifiers": ["shift", "option"] },
+      "hotkey": { "key": "q", "modifiers": ["shift", "option"] },
       "defaultSubMode": "countdown",
       "worldClocks": ["UTC+0", "UTC+3", "America/New_York"],
       "pomodoroWorkMinutes": 25,
@@ -111,11 +113,11 @@ Every entry in `modes` has these common fields, plus type-specific extras:
     },
     {
       "id": "generators", "type": "generators",
-      "hotkey": { "key": "g", "modifiers": ["shift", "option"] }
+      "hotkey": { "key": "x", "modifiers": ["shift", "option"] }
     },
     {
       "id": "clipboard", "type": "clipboard",
-      "hotkey": { "key": "v", "modifiers": ["shift", "option"] }
+      "hotkey": { "key": "a", "modifiers": ["shift", "option"] }
     },
     {
       "id": "ocr", "type": "ocr",

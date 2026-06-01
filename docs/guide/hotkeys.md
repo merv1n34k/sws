@@ -12,11 +12,11 @@ keyboard for one-hand reach.
 |---|---|
 | Terminal (calc) | ⌥⇧S |
 | Color | ⌥⇧C |
-| Time | ⌥⇧T |
+| Time | ⌥⇧Q |
 | Status | ⌥⇧D |
 | EnDe | ⌥⇧E |
-| Generators | ⌥⇧G |
-| Clipboard | ⌥⇧V |
+| Generators | ⌥⇧X |
+| Clipboard | ⌥⇧A |
 | OCR | ⌥⇧R |
 | Scratchpad | ⌥⇧W |
 

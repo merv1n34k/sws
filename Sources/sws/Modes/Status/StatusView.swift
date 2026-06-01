@@ -8,8 +8,8 @@ final class StatusView: NSView, NSTextFieldDelegate {
     private let portsResult = NSTextField(labelWithString: "")
     private let httpSearch = NSTextField()
     private let httpResult = NSTextField(labelWithString: "")
-    private let ipLabel = NSTextField(labelWithString: "—")
-    private let wifiLabel = NSTextField(labelWithString: "—")
+    private let ipLabel = ClickToCopyLabel()
+    private let wifiLabel = ClickToCopyLabel()
     private var buttons: [StatusWidgetID: StatusStatButton] = [:]
     private var timer: Timer?
     private var pinObserver: NSObjectProtocol?
@@ -51,11 +51,18 @@ final class StatusView: NSView, NSTextFieldDelegate {
         httpSearch.placeholderString = "HTTP — number or word"
         httpSearch.delegate = self
 
-        for field in [portsResult, httpResult, ipLabel, wifiLabel] {
+        for field in [portsResult, httpResult] {
             field.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
             field.textColor = .white
             field.maximumNumberOfLines = 2
             field.lineBreakMode = .byTruncatingTail
+        }
+        for clickable in [ipLabel, wifiLabel] {
+            clickable.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+            clickable.textColor = .white
+            clickable.maximumNumberOfLines = 2
+            clickable.lineBreakMode = .byTruncatingTail
+            clickable.toolTip = "Click to copy"
         }
 
         let portsRow = lookupRow(label: "Ports", search: portsSearch, result: portsResult)
@@ -76,15 +83,12 @@ final class StatusView: NSView, NSTextFieldDelegate {
         separator.translatesAutoresizingMaskIntoConstraints = false
         addSubview(separator)
 
-        // Button grid (2 per row, fixed cell width so values can grow
-        // without resizing the layout).
-        let grid = NSGridView()
-        grid.translatesAutoresizingMaskIntoConstraints = false
-        grid.rowSpacing = 8
-        grid.columnSpacing = 8
-        grid.xPlacement = .leading
-        grid.yPlacement = .fill
-
+        // Two horizontal stacks (top and bottom rows) inside a vertical
+        // stack — every row uses .fillEqually so all buttons share a
+        // uniform width, and the vertical stack itself uses .fillEqually
+        // so both rows occupy the same height. Buttons drop their fixed
+        // intrinsic size constraints so they stretch to fill.
+        var rowStacks: [NSStackView] = []
         var current: [StatusStatButton] = []
         for kind in StatusWidgetID.allCases {
             let btn = StatusStatButton(kind: kind) { [weak self] kind in
@@ -94,14 +98,21 @@ final class StatusView: NSView, NSTextFieldDelegate {
             buttons[kind] = btn
             current.append(btn)
             if current.count == 2 {
-                grid.addRow(with: current.map { $0 as NSView })
+                rowStacks.append(makeRow(current))
                 current.removeAll()
             }
         }
         if !current.isEmpty {
             while current.count < 2 { current.append(StatusStatButton.placeholder()) }
-            grid.addRow(with: current.map { $0 as NSView })
+            rowStacks.append(makeRow(current))
         }
+
+        let grid = NSStackView(views: rowStacks)
+        grid.orientation = .vertical
+        grid.spacing = 8
+        grid.distribution = .fillEqually
+        grid.alignment = .leading
+        grid.translatesAutoresizingMaskIntoConstraints = false
         addSubview(grid)
 
         NSLayoutConstraint.activate([
@@ -116,8 +127,17 @@ final class StatusView: NSView, NSTextFieldDelegate {
             grid.topAnchor.constraint(equalTo: separator.bottomAnchor, constant: 14),
             grid.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
             grid.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-            grid.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -14),
+            grid.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -14),
         ])
+    }
+
+    private func makeRow(_ buttons: [StatusStatButton]) -> NSStackView {
+        let row = NSStackView(views: buttons)
+        row.orientation = .horizontal
+        row.spacing = 8
+        row.distribution = .fillEqually
+        row.alignment = .centerY
+        return row
     }
 
     private func wire() {
@@ -146,8 +166,10 @@ final class StatusView: NSView, NSTextFieldDelegate {
         if let pub = NetworkInfo.shared.publicIP {
             let vpn = NetworkInfo.shared.vpnLikely() ? " (VPN)" : ""
             ipLabel.stringValue = "local \(local)  ·  public \(pub)\(vpn)"
+            ipLabel.copyValue = pub
         } else {
             ipLabel.stringValue = "local \(local)  ·  public …"
+            ipLabel.copyValue = local
             NetworkInfo.shared.refreshPublicIP { [weak self] _ in self?.refresh() }
         }
         let wifi = WiFiInfo.current()
@@ -155,8 +177,10 @@ final class StatusView: NSView, NSTextFieldDelegate {
             let rssi = wifi.rssi.map { "  \($0) dBm" } ?? ""
             let chan = wifi.channel.map { "  ch \($0)" } ?? ""
             wifiLabel.stringValue = "\(ssid)\(rssi)\(chan)"
+            wifiLabel.copyValue = ssid
         } else {
             wifiLabel.stringValue = "not connected"
+            wifiLabel.copyValue = ""
         }
         updatePinStates()
     }
@@ -205,7 +229,7 @@ final class StatusView: NSView, NSTextFieldDelegate {
         return row
     }
 
-    private func readoutRow(label: String, field: NSTextField) -> NSView {
+    private func readoutRow(label: String, field: NSView) -> NSView {
         let l = sectionLabel(label)
         l.widthAnchor.constraint(equalToConstant: 50).isActive = true
         let row = NSStackView(views: [l, field])
@@ -262,14 +286,20 @@ final class StatusStatButton: NSView {
         stack.alignment = .centerX
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
+        // No fixed intrinsic size — the containing NSStackView with
+        // .fillEqually decides the cell's frame, so the button always
+        // fills its share of the available space.
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 52),
-            widthAnchor.constraint(equalToConstant: 180),
             stack.centerXAnchor.constraint(equalTo: centerXAnchor),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
             stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 4),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
         ])
+        // Make the button claim a sensible minimum even when its row
+        // stack is collapsed.
+        let minH = heightAnchor.constraint(greaterThanOrEqualToConstant: 48)
+        minH.priority = .defaultHigh
+        minH.isActive = true
 
         widget = kind.makeWidget()
     }

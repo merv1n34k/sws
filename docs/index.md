@@ -37,11 +37,11 @@ features:
 |---|---|---|
 | Terminal | ⌥⇧S | Any CLI (default `bc -l`); configure one terminal mode per command. |
 | Color | ⌥⇧C | Pixel picker + drag-region palette + contrast checker. |
-| Time | ⌥⇧T | Stopwatch · Countdown · Pomodoro · World clocks · NLP date phrases. |
+| Time | ⌥⇧Q | Stopwatch · Countdown · Pomodoro · World clocks · NLP date phrases. |
 | Status | ⌥⇧D | Live system stats with pin-to-menu-bar buttons. |
 | EnDe | ⌥⇧E | Base64 · URL · CSV ↔ MD · JWT · QR · Barcode. |
-| Generators | ⌥⇧G | Password · UUID · Lorem · Random picker. |
-| Clipboard | ⌥⇧V | Pasteboard history (1 MB cap, image thumbnails). |
+| Generators | ⌥⇧X | Password · UUID · Lorem · Random picker. |
+| Clipboard | ⌥⇧A | Pasteboard history (configurable cap, image thumbnails). |
 | OCR | ⌥⇧R | Image / PDF → text via Vision. |
 | Scratchpad | ⌥⇧W | Persistent monospace text. |
 

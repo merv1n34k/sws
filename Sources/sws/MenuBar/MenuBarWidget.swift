@@ -43,7 +43,12 @@ extension MenuBarRendering {
 
     /// Compact left-aligned 2-line template image for the menu bar.
     /// Top line ≈ small label, bottom ≈ value. macOS tints it.
-    static func twoLines(top: String, bottom: String, tooltip: String? = nil) -> Self {
+    ///
+    /// `minWidth` reserves a stable rendering width so the widget
+    /// doesn't jitter as the value changes (e.g. CPU 12% → 100%, or
+    /// throughput 0 KB/s → 1.2 MB/s). Set it to the width of the
+    /// worst-case top/bottom string at the same font.
+    static func twoLines(top: String, bottom: String, minWidth: CGFloat = 0, tooltip: String? = nil) -> Self {
         let topFont = NSFont.systemFont(ofSize: 8, weight: .semibold)
         let bottomFont = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .medium)
 
@@ -61,7 +66,8 @@ extension MenuBarRendering {
         let bottomNS = bottom as NSString
         let topSize = topNS.size(withAttributes: topAttrs)
         let bottomSize = bottomNS.size(withAttributes: bottomAttrs)
-        let width = ceil(max(topSize.width, bottomSize.width)) + 4
+        let measured = ceil(max(topSize.width, bottomSize.width)) + 4
+        let width = max(measured, minWidth)
         let height: CGFloat = 22
 
         let img = NSImage(size: NSSize(width: width, height: height))

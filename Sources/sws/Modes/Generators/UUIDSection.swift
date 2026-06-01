@@ -8,16 +8,16 @@ final class UUIDSection: NSView, GeneratorsSection {
     private let stepper = NSStepper()
     private let countLabel = NSTextField(labelWithString: "5")
     private let scroll: NSScrollView
-    private let textView: NSTextView
+    private let textView: ClickToCopyTextView
     private let regenButton = NSButton(title: "Regenerate", target: nil, action: nil)
-    private let copyButton = NSButton(title: "Copy all", target: nil, action: nil)
 
     private var count: Int = 5
     private var kind: Generators.IDKind = .v4
 
     init() {
-        scroll = NSTextView.scrollableTextView()
-        textView = scroll.documentView as! NSTextView
+        let pair = ClickToCopyTextView.scrollable()
+        scroll = pair.scroll
+        textView = pair.view
         super.init(frame: .zero)
         buildLayout()
         wire()
@@ -55,6 +55,7 @@ final class UUIDSection: NSView, GeneratorsSection {
         textView.textColor = .white
         textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.toolTip = "Click to copy"
 
         scroll.hasVerticalScroller = true
         scroll.borderType = .noBorder
@@ -63,12 +64,9 @@ final class UUIDSection: NSView, GeneratorsSection {
         scroll.layer?.cornerRadius = 6
         scroll.layer?.masksToBounds = true
 
-        let buttonRow = NSStackView(views: [regenButton, copyButton])
-        buttonRow.spacing = 8
         regenButton.bezelStyle = .rounded
-        copyButton.bezelStyle = .rounded
 
-        let stack = NSStackView(views: [topRow, scroll, buttonRow])
+        let stack = NSStackView(views: [topRow, scroll, regenButton])
         stack.orientation = .vertical
         stack.spacing = 12
         stack.alignment = .left
@@ -91,8 +89,6 @@ final class UUIDSection: NSView, GeneratorsSection {
         stepper.action = #selector(countChanged)
         regenButton.target = self
         regenButton.action = #selector(regenerate)
-        copyButton.target = self
-        copyButton.action = #selector(copyOutput)
     }
 
     func refresh() { regenerate() }
@@ -111,12 +107,6 @@ final class UUIDSection: NSView, GeneratorsSection {
     @objc private func regenerate() {
         let ids = Generators.generateIDs(kind: kind, count: count)
         textView.string = ids.joined(separator: "\n")
-    }
-
-    @objc private func copyOutput() {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(textView.string, forType: .string)
     }
 
     private func label(_ s: String) -> NSTextField {

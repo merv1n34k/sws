@@ -4,7 +4,7 @@ Five time-related sub-modes behind a top segmented control.
 
 ## Hotkey
 
-Default: **⌥⇧T**.
+Default: **⌥⇧Q**.
 
 ## Sub-modes
 

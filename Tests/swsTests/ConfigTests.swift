@@ -9,9 +9,12 @@ struct ConfigTests {
         let config = SWSConfig.default
         #expect(config.version == 2)
         #expect(config.defaultMode == "calc")
-        #expect(config.modes.count == 1)
+        #expect(config.modes.count == 9)
         #expect(config.modes[0].id == "calc")
         #expect(config.modes[0].type == "terminal")
+        let ids = Set(config.modes.map(\.id))
+        #expect(ids.isSuperset(of: ["calc", "color", "timer", "status", "ende",
+                                    "generators", "clipboard", "ocr", "scratchpad"]))
     }
 
     @Test

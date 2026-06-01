@@ -9,9 +9,8 @@ final class PasswordSection: NSView, GeneratorsSection {
     private let upperCheck = NSButton(checkboxWithTitle: "A-Z", target: nil, action: nil)
     private let digitCheck = NSButton(checkboxWithTitle: "0-9", target: nil, action: nil)
     private let symbolCheck = NSButton(checkboxWithTitle: "!@#$", target: nil, action: nil)
-    private let output = NSTextField(wrappingLabelWithString: "")
+    private let output = ClickToCopyLabel()
     private let regenButton = NSButton(title: "Regenerate", target: nil, action: nil)
-    private let copyButton = NSButton(title: "Copy", target: nil, action: nil)
 
     init() {
         super.init(frame: .zero)
@@ -56,6 +55,7 @@ final class PasswordSection: NSView, GeneratorsSection {
         output.textColor = .white
         output.maximumNumberOfLines = 2
         output.preferredMaxLayoutWidth = 380
+        output.toolTip = "Click to copy"
 
         let outputBox = NSView()
         outputBox.wantsLayer = true
@@ -70,12 +70,9 @@ final class PasswordSection: NSView, GeneratorsSection {
             output.trailingAnchor.constraint(equalTo: outputBox.trailingAnchor, constant: -10),
         ])
 
-        let buttonRow = NSStackView(views: [regenButton, copyButton])
-        buttonRow.spacing = 8
         regenButton.bezelStyle = .rounded
-        copyButton.bezelStyle = .rounded
 
-        let stack = NSStackView(views: [lengthRow, checkRow, outputBox, buttonRow])
+        let stack = NSStackView(views: [lengthRow, checkRow, outputBox, regenButton])
         stack.orientation = .vertical
         stack.spacing = 12
         stack.alignment = .left
@@ -100,8 +97,6 @@ final class PasswordSection: NSView, GeneratorsSection {
         }
         regenButton.target = self
         regenButton.action = #selector(regenerate)
-        copyButton.target = self
-        copyButton.action = #selector(copyOutput)
     }
 
     func refresh() { regenerate() }
@@ -121,13 +116,9 @@ final class PasswordSection: NSView, GeneratorsSection {
     }
 
     @objc private func regenerate() {
-        output.stringValue = Generators.password(options: options)
-    }
-
-    @objc private func copyOutput() {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(output.stringValue, forType: .string)
+        let pw = Generators.password(options: options)
+        output.stringValue = pw
+        output.copyValue = pw
     }
 
     private func label(_ s: String) -> NSTextField {

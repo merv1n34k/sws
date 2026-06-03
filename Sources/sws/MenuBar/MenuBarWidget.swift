@@ -6,6 +6,8 @@ import AppKit
 protocol MenuBarWidget: AnyObject {
     /// Stable id used to find/persist the widget (e.g. "cpu", "wifi").
     var id: String { get }
+    /// Display label shown at the top of the detail popover.
+    var detailTitle: String { get }
     /// How often to refresh in seconds. 0 = manual refresh only.
     var pollInterval: TimeInterval { get }
     /// Render the current value into a compact display payload
@@ -15,10 +17,17 @@ protocol MenuBarWidget: AnyObject {
     /// Independent of `render()` so dashboards and menu-bar items
     /// can format differently.
     func currentValue() -> String
+    /// Rich detail surface shown when the menu-bar button is clicked.
+    /// Return nil to skip the popover entirely. Implementations should
+    /// hold the view weakly or recreate it — the registry may call
+    /// this once per popover open.
+    func detailView() -> NSView?
 }
 
 extension MenuBarWidget {
+    var detailTitle: String { id.capitalized }
     func currentValue() -> String { "" }
+    func detailView() -> NSView? { nil }
 }
 
 /// What gets shown on the menu-bar button.

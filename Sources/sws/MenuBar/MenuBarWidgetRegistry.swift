@@ -16,6 +16,10 @@ final class MenuBarWidgetRegistry {
     private var statusItems: [String: NSStatusItem] = [:]
     private var timers: [String: Timer] = [:]
     private var pinnedIds: Set<String> = []
+    private var popovers: [String: NSPopover] = [:]
+    /// Maps a status-item button's hash to its widget id so the click
+    /// handler can find the right popover.
+    private var buttonToId: [ObjectIdentifier: String] = [:]
 
     /// Subscribe-once notification fired when any widget is
     /// added/removed; views like StatusView listen to refresh button
@@ -72,8 +76,12 @@ final class MenuBarWidgetRegistry {
         pinnedIds.remove(id)
         timers.removeValue(forKey: id)?.invalidate()
         if let item = statusItems.removeValue(forKey: id) {
+            if let btn = item.button {
+                buttonToId.removeValue(forKey: ObjectIdentifier(btn))
+            }
             NSStatusBar.system.removeStatusItem(item)
         }
+        popovers.removeValue(forKey: id)?.performClose(nil)
         activeWidgets.removeValue(forKey: id)
         persist()
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
@@ -87,6 +95,12 @@ final class MenuBarWidgetRegistry {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         activeWidgets[id] = widget
         statusItems[id] = item
+        if let btn = item.button {
+            btn.target = self
+            btn.action = #selector(statusButtonClicked(_:))
+            btn.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            buttonToId[ObjectIdentifier(btn)] = id
+        }
         renderInto(item: item, widget: widget)
         if widget.pollInterval > 0 {
             let t = Timer(timeInterval: widget.pollInterval, repeats: true) { [weak self] _ in
@@ -98,6 +112,55 @@ final class MenuBarWidgetRegistry {
             RunLoop.main.add(t, forMode: .common)
             timers[id] = t
         }
+    }
+
+    // MARK: - Popover
+
+    @objc private func statusButtonClicked(_ sender: NSStatusBarButton) {
+        guard let id = buttonToId[ObjectIdentifier(sender)],
+              let widget = activeWidgets[id] else { return }
+
+        // Right-click → contextual menu with Unpin. Left-click → popover.
+        let event = NSApp.currentEvent
+        if event?.type == .rightMouseUp {
+            let menu = NSMenu()
+            let item = NSMenuItem(title: "Unpin \(widget.detailTitle)", action: #selector(unpinFromMenu(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = id
+            menu.addItem(item)
+            statusItems[id]?.menu = menu
+            sender.performClick(nil)
+            // Clear so the next left-click reopens the popover rather
+            // than re-showing the menu.
+            DispatchQueue.main.async { [weak self] in self?.statusItems[id]?.menu = nil }
+            return
+        }
+
+        togglePopover(for: id, widget: widget, anchor: sender)
+    }
+
+    @objc private func unpinFromMenu(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        unpin(id: id)
+    }
+
+    private func togglePopover(for id: String, widget: MenuBarWidget, anchor: NSView) {
+        if let existing = popovers[id], existing.isShown {
+            existing.performClose(nil)
+            return
+        }
+        guard let body = widget.detailView() else { return }
+        let wrapper = WidgetPopover.wrap(title: widget.detailTitle, body: body) { [weak self] in
+            self?.popovers[id]?.performClose(nil)
+            self?.unpin(id: id)
+        }
+
+        let pop = NSPopover()
+        pop.behavior = .transient
+        pop.contentViewController = NSViewController()
+        pop.contentViewController?.view = wrapper
+        pop.show(relativeTo: .zero, of: anchor, preferredEdge: .minY)
+        popovers[id] = pop
     }
 
     private func renderInto(item: NSStatusItem, widget: MenuBarWidget) {
@@ -119,6 +182,11 @@ final class MenuBarWidgetRegistry {
         } else {
             btn.imagePosition = .noImage
         }
+        // Left-align inside the status-item slot. NSStatusBarButton
+        // defaults to .center which leaves a visible gutter when the
+        // image is narrower than its reserved width.
+        btn.alignment = .left
+        btn.imageScaling = .scaleNone
     }
 
     private func persist() {

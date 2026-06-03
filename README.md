@@ -12,9 +12,9 @@
 
 <p align="center">
   <a href="https://github.com/merv1n34k/sws/actions/workflows/ci.yml"><img src="https://github.com/merv1n34k/sws/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/merv1n34k/sws/releases/latest"><img src="https://img.shields.io/github/v/release/merv1n34k/sws?label=release" alt="Latest release"></a>
+  <a href="https://github.com/merv1n34k/sws/releases/latest"><img src="https://img.shields.io/github/v/release/merv1n34k/sws?label=release&color=blue" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/macOS-13%2B-blue" alt="macOS 13+">
-  <img src="https://img.shields.io/badge/Swift-5.9-orange" alt="Swift 5.9">
+  <img src="https://img.shields.io/badge/Swift-6.0-orange" alt="Swift 6.0">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License: MIT">
 </p>
 
@@ -72,28 +72,24 @@ Mode list lives at `~/.config/sws/config.json`. Example:
 Full schema and per-mode options in the
 [Configuration guide](docs/guide/configuration.md).
 
-## Docs
-
-Full documentation lives under `docs/` as a VitePress site:
-
-```bash
-make docs    # serves http://localhost:5173 (runs `bun install` on first use)
-```
-
-Highlights:
-- [Installation](docs/guide/installation.md)
-- [Configuration](docs/guide/configuration.md)
-- [Hotkey conventions](docs/guide/hotkeys.md)
-- [Architecture](docs/guide/architecture.md)
-- [Adding a mode](docs/guide/adding-modes.md)
-- Per-mode reference under [docs/modes/](docs/modes/)
-
 ## Requirements
 
 - macOS 13+ (Ventura)
 - Apple Silicon or Intel
 - Xcode command line tools (`swift`, `codesign`, `iconutil`)
 
+## Documentation
+
+Full guides, per-mode reference, architecture notes, and configuration schema:
+
+**[merv1n34k.github.io/sws](https://merv1n34k.github.io/sws/)**
+
+Or run the site locally:
+
+```bash
+make docs    # serves http://localhost:5173 (runs `bun install` on first use)
+```
+
 ## License
 
-MIT — see `LICENSE`.
+Distributed under MIT licence, see `LICENSE` for more.

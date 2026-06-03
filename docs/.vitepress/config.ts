@@ -3,6 +3,8 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'SWS',
   description: 'Swift Window Shell — native macOS hotkey utility belt',
+  // Deployed at https://merv1n34k.github.io/sws/ — paths need this prefix.
+  base: '/sws/',
   cleanUrls: true,
   themeConfig: {
     nav: [

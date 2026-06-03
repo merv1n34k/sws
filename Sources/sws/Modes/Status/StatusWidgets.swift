@@ -50,32 +50,39 @@ final class CPUWidget: MenuBarWidget {
 
 private final class CPUDetailView: NSView {
     private let valueLabel = NSTextField(labelWithString: "—%")
-    private let breakdownLabel = NSTextField(labelWithString: "")
-    private let userSwatch = ColorSwatch(color: .systemBlue, label: "user")
-    private let systemSwatch = ColorSwatch(color: .systemRed, label: "system")
+    private let userValue = NSTextField(labelWithString: "—%")
+    private let systemValue = NSTextField(labelWithString: "—%")
     private let spark = StackedSparkline()
 
     init() {
         super.init(frame: .zero)
         valueLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 28, weight: .semibold)
-        breakdownLabel.font = NSFont.systemFont(ofSize: 11)
-        breakdownLabel.textColor = .secondaryLabelColor
+        userValue.font = NSFont.systemFont(ofSize: 11)
+        userValue.textColor = .secondaryLabelColor
+        systemValue.font = NSFont.systemFont(ofSize: 11)
+        systemValue.textColor = .secondaryLabelColor
 
         spark.primaryColor = .systemBlue       // user — bottom band
         spark.secondaryColor = .systemRed      // system — stacked on top
         spark.yMax = 1.0
         spark.translatesAutoresizingMaskIntoConstraints = false
 
-        let legend = NSStackView(views: [userSwatch, systemSwatch, NSView()])
-        legend.orientation = .horizontal
-        legend.spacing = 10
-        legend.alignment = .centerY
+        // Inline legend — color dot sits immediately to the left of
+        // each value so the breakdown reads as one row.
+        let userChip = inlineChip(color: .systemBlue, label: "user", valueField: userValue)
+        let systemChip = inlineChip(color: .systemRed, label: "system", valueField: systemValue)
 
-        let headline = NSStackView(views: [valueLabel, NSView(), breakdownLabel])
+        let breakdownRow = NSStackView(views: [userChip, systemChip, NSView()])
+        breakdownRow.orientation = .horizontal
+        breakdownRow.spacing = 14
+        breakdownRow.alignment = .centerY
+
+        let headline = NSStackView(views: [valueLabel, NSView(), breakdownRow])
         headline.orientation = .horizontal
         headline.alignment = .firstBaseline
+        headline.spacing = 8
 
-        let stack = NSStackView(views: [headline, spark, legend])
+        let stack = NSStackView(views: [headline, spark])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 6
@@ -86,7 +93,7 @@ private final class CPUDetailView: NSView {
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            spark.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
+            spark.widthAnchor.constraint(greaterThanOrEqualToConstant: 280),
             spark.heightAnchor.constraint(equalToConstant: 60),
         ])
     }
@@ -96,48 +103,34 @@ private final class CPUDetailView: NSView {
 
     func update(current: SystemStats.CPULoad, history: [SystemStats.CPULoad]) {
         valueLabel.stringValue = String(format: "%.0f%%", current.total * 100)
-        breakdownLabel.stringValue = String(
-            format: "user %.0f%%  ·  system %.0f%%",
-            current.user * 100, current.system * 100
-        )
+        userValue.stringValue = String(format: "user %.0f%%", current.user * 100)
+        systemValue.stringValue = String(format: "system %.0f%%", current.system * 100)
         spark.reset()
         for sample in history {
             spark.add(StackedSparkline.Point(primary: sample.user, secondary: sample.system))
         }
     }
-}
 
-/// Tiny legend chip: filled dot + label.
-private final class ColorSwatch: NSView {
-    init(color: NSColor, label: String) {
-        super.init(frame: .zero)
+    /// Color dot + value field rendered as one horizontal row.
+    /// `label` is folded into the value field text (e.g. "user 23%"),
+    /// so we only need the dot to sit beside it.
+    private func inlineChip(color: NSColor, label: String, valueField: NSTextField) -> NSView {
         let dot = NSView()
         dot.wantsLayer = true
         dot.layer?.backgroundColor = color.cgColor
         dot.layer?.cornerRadius = 4
         dot.translatesAutoresizingMaskIntoConstraints = false
 
-        let l = NSTextField(labelWithString: label)
-        l.font = NSFont.systemFont(ofSize: 11)
-        l.textColor = .secondaryLabelColor
-
-        addSubview(dot)
-        addSubview(l)
-        l.translatesAutoresizingMaskIntoConstraints = false
+        let row = NSStackView(views: [dot, valueField])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 5
         NSLayoutConstraint.activate([
-            dot.leadingAnchor.constraint(equalTo: leadingAnchor),
-            dot.centerYAnchor.constraint(equalTo: centerYAnchor),
             dot.widthAnchor.constraint(equalToConstant: 8),
             dot.heightAnchor.constraint(equalToConstant: 8),
-            l.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 4),
-            l.centerYAnchor.constraint(equalTo: centerYAnchor),
-            l.trailingAnchor.constraint(equalTo: trailingAnchor),
-            heightAnchor.constraint(equalToConstant: 14),
         ])
+        return row
     }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
 }
 
 // MARK: - RAM

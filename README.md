@@ -1,12 +1,22 @@
-# SWS — Swift Window Shell
+<p align="center">
+  <img src="assets/logo.png" alt="SWS" width="160" height="160">
+</p>
 
-Lightweight native macOS menu-bar utility belt. Press a hotkey, a small
-floating window opens with the tool you asked for. Press it again, it
-goes away and your focus returns to whatever you were doing.
+<h1 align="center">SWS — Swift Window Shell</h1>
 
-![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue)
-![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange)
-![License: MIT](https://img.shields.io/badge/License-MIT-green)
+<p align="center">
+  Lightweight native macOS menu-bar utility belt.<br>
+  Press a hotkey, a small floating window opens with the tool you asked for.<br>
+  Press it again, it goes away and your focus returns to whatever you were doing.
+</p>
+
+<p align="center">
+  <a href="https://github.com/merv1n34k/sws/actions/workflows/ci.yml"><img src="https://github.com/merv1n34k/sws/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/merv1n34k/sws/releases/latest"><img src="https://img.shields.io/github/v/release/merv1n34k/sws?label=release" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/macOS-13%2B-blue" alt="macOS 13+">
+  <img src="https://img.shields.io/badge/Swift-5.9-orange" alt="Swift 5.9">
+  <img src="https://img.shields.io/badge/License-MIT-green" alt="License: MIT">
+</p>
 
 ## Modes
 

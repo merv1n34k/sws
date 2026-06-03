@@ -303,6 +303,11 @@ private final class DiskDetailView: NSView {
     private var purgeableRow: (row: NSView, value: NSTextField)!
     private var freeRow: (row: NSView, value: NSTextField)!
 
+    private let categoriesHeading = NSTextField(labelWithString: "Folders")
+    private let categoriesStatus = NSTextField(labelWithString: "")
+    private let categoriesStack = NSStackView()
+    private var categoryRows: [String: NSTextField] = [:]
+
     init() {
         super.init(frame: .zero)
         freeLabel.font = NSFont.systemFont(ofSize: 18, weight: .semibold)
@@ -322,15 +327,34 @@ private final class DiskDetailView: NSView {
         headline.orientation = .horizontal
         headline.alignment = .firstBaseline
 
-        let categories = NSStackView(views: [usedRow.row, purgeableRow.row, freeRow.row])
-        categories.orientation = .vertical
-        categories.alignment = .leading
-        categories.spacing = 2
+        let volumeBreakdown = NSStackView(views: [usedRow.row, purgeableRow.row, freeRow.row])
+        volumeBreakdown.orientation = .vertical
+        volumeBreakdown.alignment = .leading
+        volumeBreakdown.spacing = 2
 
-        let stack = NSStackView(views: [headline, bar, categories, deltaLabel])
+        categoriesHeading.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        categoriesHeading.textColor = .secondaryLabelColor
+        categoriesStatus.font = NSFont.systemFont(ofSize: 10)
+        categoriesStatus.textColor = .tertiaryLabelColor
+
+        categoriesStack.orientation = .vertical
+        categoriesStack.alignment = .leading
+        categoriesStack.spacing = 2
+
+        let stack = NSStackView(views: [
+            headline,
+            bar,
+            volumeBreakdown,
+            deltaLabel,
+            categoriesHeading,
+            categoriesStack,
+            categoriesStatus,
+        ])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 6
+        stack.setCustomSpacing(12, after: deltaLabel)
+        stack.setCustomSpacing(4, after: categoriesHeading)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -338,11 +362,15 @@ private final class DiskDetailView: NSView {
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            bar.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
+            bar.widthAnchor.constraint(greaterThanOrEqualToConstant: 280),
             usedRow.row.widthAnchor.constraint(equalTo: stack.widthAnchor),
             purgeableRow.row.widthAnchor.constraint(equalTo: stack.widthAnchor),
             freeRow.row.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            categoriesStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
         ])
+
+        buildCategoryRows()
+        loadCategories()
     }
 
     @available(*, unavailable)
@@ -364,6 +392,48 @@ private final class DiskDetailView: NSView {
         let sign = delta >= 0 ? "+" : "−"
         let mag = SystemStats.humanBytes(abs(delta))
         deltaLabel.stringValue = "Δ since launch  \(sign)\(mag)  ·  \(mins) min"
+    }
+
+    private func buildCategoryRows() {
+        for category in StorageCategoryScanner.shared.categories {
+            let icon = NSImageView()
+            icon.image = NSImage(systemSymbolName: category.symbol, accessibilityDescription: category.label)
+            icon.contentTintColor = .secondaryLabelColor
+            icon.imageScaling = .scaleProportionallyDown
+            icon.translatesAutoresizingMaskIntoConstraints = false
+
+            let label = NSTextField(labelWithString: category.label)
+            label.font = NSFont.systemFont(ofSize: 11)
+
+            let value = NSTextField(labelWithString: "—")
+            value.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+            value.textColor = .secondaryLabelColor
+
+            let row = NSStackView(views: [icon, label, NSView(), value])
+            row.orientation = .horizontal
+            row.alignment = .centerY
+            row.spacing = 6
+            NSLayoutConstraint.activate([
+                icon.widthAnchor.constraint(equalToConstant: 14),
+                icon.heightAnchor.constraint(equalToConstant: 14),
+                row.widthAnchor.constraint(greaterThanOrEqualToConstant: 280),
+            ])
+            categoriesStack.addArrangedSubview(row)
+            categoryRows[category.id] = value
+        }
+    }
+
+    private func loadCategories() {
+        categoriesStatus.stringValue = "Calculating folder sizes…"
+        StorageCategoryScanner.shared.results { [weak self] results, isCached in
+            guard let self = self else { return }
+            for r in results {
+                self.categoryRows[r.category.id]?.stringValue = SystemStats.humanBytes(r.bytes)
+            }
+            self.categoriesStatus.stringValue = isCached
+                ? "Cached — refreshing in background…"
+                : "Updated just now"
+        }
     }
 }
 

@@ -75,16 +75,20 @@ extension MenuBarRendering {
         let bottomNS = bottom as NSString
         let topSize = topNS.size(withAttributes: topAttrs)
         let bottomSize = bottomNS.size(withAttributes: bottomAttrs)
-        let measured = ceil(max(topSize.width, bottomSize.width)) + 4
+        // No internal padding: the image is exactly the rendered text
+        // width (or `minWidth` if larger for stability). With both
+        // lines drawn at x=0, the trailing whitespace inside the image
+        // is the difference between the wider line and the narrower
+        // one — both top and bottom are flush at the left edge.
+        let measured = ceil(max(topSize.width, bottomSize.width))
         let width = max(measured, minWidth)
         let height: CGFloat = 22
 
         let img = NSImage(size: NSSize(width: width, height: height))
         img.lockFocus()
-        // Left-aligned: both lines start at x=2.
         // y origin bottom-left; menu bar ~22pt: top baseline ≈ 12, bottom ≈ 1.
-        topNS.draw(at: NSPoint(x: 2, y: 12), withAttributes: topAttrs)
-        bottomNS.draw(at: NSPoint(x: 2, y: 1), withAttributes: bottomAttrs)
+        topNS.draw(at: NSPoint(x: 0, y: 12), withAttributes: topAttrs)
+        bottomNS.draw(at: NSPoint(x: 0, y: 1), withAttributes: bottomAttrs)
         img.unlockFocus()
         img.isTemplate = true
         return .init(text: nil, attributedText: nil, image: img, tooltip: tooltip)

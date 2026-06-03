@@ -216,10 +216,12 @@ final class MenuBarWidgetRegistry {
         }
         btn.alignment = .left
         btn.imageScaling = .scaleNone
-        // Match status-item slot width to the image so there's no extra
-        // gutter the system might center against.
+        // Match the status item slot width to the image exactly.
+        // Earlier we used `image.width + 4`, which left 4 pt of slack
+        // that the system centered the image against. With length =
+        // image width, there is nowhere for the cell to recenter to.
         if let img = r.image {
-            item.length = img.size.width + 4
+            item.length = img.size.width
         }
     }
 

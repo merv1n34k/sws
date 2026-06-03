@@ -267,27 +267,27 @@ final class DiskWidget: MenuBarWidget {
     let detailTitle = "Storage"
     let pollInterval: TimeInterval = 30
     private var lastValue = "   —"
-    private var lastFree: Int64 = 0
-    private var lastTotal: Int64 = 0
+    private var lastBreakdown: SystemStats.StorageBreakdown?
     private var startupFree: Int64?
     private var startupAt = Date()
     private weak var detail: DiskDetailView?
     private static let reserved = reserveWidth(top: "SSD", longestBottom: "999 GB")
 
     func render() -> MenuBarRendering {
-        let (free, total) = SystemStats.diskUsage()
-        lastFree = free
-        lastTotal = total
-        if startupFree == nil { startupFree = free }
-        lastValue = SystemStats.humanBytesShort(free)
-        detail?.update(free: free, total: total, startupFree: startupFree ?? free, startupAt: startupAt)
+        let m = SystemStats.storageBreakdown()
+        lastBreakdown = m
+        if startupFree == nil { startupFree = m.free }
+        lastValue = SystemStats.humanBytesShort(m.free)
+        detail?.update(m: m, startupFree: startupFree ?? m.free, startupAt: startupAt)
         return .twoLines(top: "SSD", bottom: lastValue, minWidth: Self.reserved)
     }
     func currentValue() -> String { lastValue.trimmingCharacters(in: .whitespaces) }
 
     func detailView() -> NSView? {
         let v = DiskDetailView()
-        v.update(free: lastFree, total: lastTotal, startupFree: startupFree ?? lastFree, startupAt: startupAt)
+        if let m = lastBreakdown {
+            v.update(m: m, startupFree: startupFree ?? m.free, startupAt: startupAt)
+        }
         detail = v
         return v
     }
@@ -299,21 +299,35 @@ private final class DiskDetailView: NSView {
     private let bar = CapacityBar()
     private let deltaLabel = NSTextField(labelWithString: "")
 
+    private var usedRow: (row: NSView, value: NSTextField)!
+    private var purgeableRow: (row: NSView, value: NSTextField)!
+    private var freeRow: (row: NSView, value: NSTextField)!
+
     init() {
         super.init(frame: .zero)
-        freeLabel.font = NSFont.systemFont(ofSize: 16, weight: .semibold)
+        freeLabel.font = NSFont.systemFont(ofSize: 18, weight: .semibold)
         totalLabel.font = NSFont.systemFont(ofSize: 11)
         totalLabel.textColor = .secondaryLabelColor
         deltaLabel.font = NSFont.systemFont(ofSize: 11)
         deltaLabel.textColor = .secondaryLabelColor
 
         bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.thresholds = (yellow: 0.85, red: 0.95)
+
+        usedRow = WidgetPopover.labeledRow("Used", value: "—")
+        purgeableRow = WidgetPopover.labeledRow("Purgeable", value: "—")
+        freeRow = WidgetPopover.labeledRow("Free", value: "—")
 
         let headline = NSStackView(views: [freeLabel, NSView(), totalLabel])
         headline.orientation = .horizontal
         headline.alignment = .firstBaseline
 
-        let stack = NSStackView(views: [headline, bar, deltaLabel])
+        let categories = NSStackView(views: [usedRow.row, purgeableRow.row, freeRow.row])
+        categories.orientation = .vertical
+        categories.alignment = .leading
+        categories.spacing = 2
+
+        let stack = NSStackView(views: [headline, bar, categories, deltaLabel])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 6
@@ -325,19 +339,27 @@ private final class DiskDetailView: NSView {
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
             bar.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
+            usedRow.row.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            purgeableRow.row.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            freeRow.row.widthAnchor.constraint(equalTo: stack.widthAnchor),
         ])
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func update(free: Int64, total: Int64, startupFree: Int64, startupAt: Date) {
-        let used = max(0, total - free)
-        freeLabel.stringValue = "\(SystemStats.humanBytes(free)) free"
-        totalLabel.stringValue = "of \(SystemStats.humanBytes(total))"
-        bar.fill = total > 0 ? Double(used) / Double(total) : 0
+    func update(m: SystemStats.StorageBreakdown, startupFree: Int64, startupAt: Date) {
+        freeLabel.stringValue = "\(SystemStats.humanBytes(m.free)) free"
+        totalLabel.stringValue = "of \(SystemStats.humanBytes(m.total))"
+        bar.fill = m.usedFraction
 
-        let delta = free - startupFree
+        usedRow.value.stringValue = SystemStats.humanBytes(m.used)
+        purgeableRow.value.stringValue = m.purgeable == 0
+            ? "none"
+            : SystemStats.humanBytes(m.purgeable)
+        freeRow.value.stringValue = SystemStats.humanBytes(m.free)
+
+        let delta = m.free - startupFree
         let mins = max(1, Int(Date().timeIntervalSince(startupAt) / 60))
         let sign = delta >= 0 ? "+" : "−"
         let mag = SystemStats.humanBytes(abs(delta))

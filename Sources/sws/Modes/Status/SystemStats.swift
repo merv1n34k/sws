@@ -132,16 +132,51 @@ enum SystemStats {
 
     // MARK: - Storage
 
+    /// Detailed volume breakdown — categories surfaceable without Full
+    /// Disk Access. macOS reports several "available capacity" values:
+    ///   - Important: includes purgeable space the system can reclaim
+    ///     for the user.
+    ///   - Opportunistic: includes purgeable that won't impact the
+    ///     user.
+    ///   - (plain) AvailableCapacity: only truly-free bytes.
+    /// The difference between opportunistic and plain available gives
+    /// the purgeable category (what About this Mac calls "Purgeable").
+    struct StorageBreakdown {
+        var total: Int64
+        var free: Int64
+        var purgeable: Int64
+        var used: Int64
+        var usedFraction: Double {
+            total > 0 ? Double(used) / Double(total) : 0
+        }
+    }
+
+    static func storageBreakdown() -> StorageBreakdown {
+        let url = URL(fileURLWithPath: NSHomeDirectory())
+        let keys: Set<URLResourceKey> = [
+            .volumeAvailableCapacityKey,
+            .volumeTotalCapacityKey,
+            .volumeAvailableCapacityForImportantUsageKey,
+            .volumeAvailableCapacityForOpportunisticUsageKey,
+        ]
+        guard let values = try? url.resourceValues(forKeys: keys) else {
+            return StorageBreakdown(total: 0, free: 0, purgeable: 0, used: 0)
+        }
+        let total = Int64(values.volumeTotalCapacity ?? 0)
+        let free = Int64(values.volumeAvailableCapacity ?? 0)
+        // Opportunistic = free + purgeable space the system can hand
+        // back without user impact. Floor at zero in case the kernel
+        // reports a lower opportunistic than plain available.
+        let opportunistic = Int64(values.volumeAvailableCapacityForOpportunisticUsage ?? 0)
+        let purgeable = max(0, opportunistic - free)
+        let used = max(0, total - free - purgeable)
+        return StorageBreakdown(total: total, free: free, purgeable: purgeable, used: used)
+    }
+
     /// Free / total bytes on the root volume.
     static func diskUsage() -> (free: Int64, total: Int64) {
-        let url = URL(fileURLWithPath: NSHomeDirectory())
-        let keys: Set<URLResourceKey> = [.volumeAvailableCapacityKey, .volumeTotalCapacityKey]
-        if let values = try? url.resourceValues(forKeys: keys) {
-            let free = Int64(values.volumeAvailableCapacity ?? 0)
-            let total = Int64(values.volumeTotalCapacity ?? 0)
-            return (free, total)
-        }
-        return (0, 0)
+        let m = storageBreakdown()
+        return (m.free, m.total)
     }
 
     // MARK: - Network throughput

@@ -16,7 +16,7 @@ final class MenuBarWidgetRegistry {
     private var statusItems: [String: NSStatusItem] = [:]
     private var timers: [String: Timer] = [:]
     private var pinnedIds: Set<String> = []
-    private var popovers: [String: NSPopover] = [:]
+    private var popovers: [String: WidgetPopup] = [:]
     /// Maps a status-item button's hash to its widget id so the click
     /// handler can find the right popover.
     private var buttonToId: [ObjectIdentifier: String] = [:]
@@ -81,7 +81,7 @@ final class MenuBarWidgetRegistry {
             }
             NSStatusBar.system.removeStatusItem(item)
         }
-        popovers.removeValue(forKey: id)?.performClose(nil)
+        popovers.removeValue(forKey: id)?.close()
         activeWidgets.removeValue(forKey: id)
         persist()
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
@@ -146,20 +146,18 @@ final class MenuBarWidgetRegistry {
 
     private func togglePopover(for id: String, widget: MenuBarWidget, anchor: NSView) {
         if let existing = popovers[id], existing.isShown {
-            existing.performClose(nil)
+            existing.close()
             return
         }
         guard let body = widget.detailView() else { return }
         let wrapper = WidgetPopover.wrap(title: widget.detailTitle, body: body) { [weak self] in
-            self?.popovers[id]?.performClose(nil)
+            self?.popovers[id]?.close()
             self?.unpin(id: id)
         }
 
-        let pop = NSPopover()
-        pop.behavior = .transient
-        pop.contentViewController = NSViewController()
-        pop.contentViewController?.view = wrapper
-        pop.show(relativeTo: .zero, of: anchor, preferredEdge: .minY)
+        guard let btn = anchor as? NSStatusBarButton else { return }
+        let pop = WidgetPopup()
+        pop.show(content: wrapper, anchoredTo: btn)
         popovers[id] = pop
     }
 
@@ -175,18 +173,22 @@ final class MenuBarWidgetRegistry {
         }
         btn.image = r.image
         btn.toolTip = r.tooltip
-        if r.image != nil && (r.text != nil || r.attributedText != nil) {
+        // Force image flush to the leading edge. `.imageOnly` centers
+        // the image inside the button regardless of `alignment`. Using
+        // `.imageLeading` with an empty title pushes the image to the
+        // left edge and respects `alignment = .left`.
+        if r.image != nil {
             btn.imagePosition = .imageLeading
-        } else if r.image != nil {
-            btn.imagePosition = .imageOnly
         } else {
             btn.imagePosition = .noImage
         }
-        // Left-align inside the status-item slot. NSStatusBarButton
-        // defaults to .center which leaves a visible gutter when the
-        // image is narrower than its reserved width.
         btn.alignment = .left
         btn.imageScaling = .scaleNone
+        // Match status-item slot width to the image so there's no extra
+        // gutter the system might center against.
+        if let img = r.image {
+            item.length = img.size.width + 4
+        }
     }
 
     private func persist() {

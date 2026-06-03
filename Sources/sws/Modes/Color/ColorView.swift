@@ -2,6 +2,7 @@ import AppKit
 
 final class ColorView: NSView {
     private let mode: ColorMode
+    private let permissionBanner = PermissionBanner()
     private let hint = NSTextField(labelWithString: "click anywhere to pick · drag for a palette · click a value to copy")
     private let swatch = NSView()
     private let hexField = ClickToCopyLabel()
@@ -18,6 +19,14 @@ final class ColorView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.backgroundColor = NSColor(white: 0.1, alpha: 1.0).cgColor
+
+        permissionBanner.configure(
+            title: "Screen Recording is off",
+            body: "The color picker can only read the desktop wallpaper without it. Grant it in Settings → Privacy & Security → Screen Recording, then reopen sws.",
+            settingsURL: SystemPermission.screenRecordingSettingsURL
+        )
+        permissionBanner.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(permissionBanner)
 
         hint.font = NSFont.systemFont(ofSize: 10)
         hint.textColor = .secondaryLabelColor
@@ -66,7 +75,11 @@ final class ColorView: NSView {
         addSubview(historyStrip)
 
         NSLayoutConstraint.activate([
-            hint.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            permissionBanner.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            permissionBanner.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            permissionBanner.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+
+            hint.topAnchor.constraint(equalTo: permissionBanner.bottomAnchor, constant: 6),
             hint.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
             hint.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
 
@@ -121,6 +134,7 @@ final class ColorView: NSView {
     }
 
     func refresh() {
+        permissionBanner.setVisible(!SystemPermission.screenRecordingGranted())
         if let color = mode.current {
             swatch.layer?.backgroundColor = color.cgColor
             assignReadout(hexField, ColorFormat.hex(color))

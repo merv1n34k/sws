@@ -307,6 +307,7 @@ private final class DiskDetailView: NSView {
     private let categoriesStatus = NSTextField(labelWithString: "")
     private let categoriesStack = NSStackView()
     private var categoryRows: [String: NSTextField] = [:]
+    private let permissionBanner = PermissionBanner()
 
     init() {
         super.init(frame: .zero)
@@ -341,6 +342,13 @@ private final class DiskDetailView: NSView {
         categoriesStack.alignment = .leading
         categoriesStack.spacing = 2
 
+        permissionBanner.configure(
+            title: "Full Disk Access is off",
+            body: "Folder sizes still work for ~/Documents, Downloads, Pictures, etc. Grant FDA for accurate totals on system-protected paths.",
+            settingsURL: SystemPermission.fullDiskAccessSettingsURL
+        )
+        permissionBanner.translatesAutoresizingMaskIntoConstraints = false
+
         let stack = NSStackView(views: [
             headline,
             bar,
@@ -349,12 +357,14 @@ private final class DiskDetailView: NSView {
             categoriesHeading,
             categoriesStack,
             categoriesStatus,
+            permissionBanner,
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 6
         stack.setCustomSpacing(12, after: deltaLabel)
         stack.setCustomSpacing(4, after: categoriesHeading)
+        stack.setCustomSpacing(10, after: categoriesStatus)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -367,8 +377,10 @@ private final class DiskDetailView: NSView {
             purgeableRow.row.widthAnchor.constraint(equalTo: stack.widthAnchor),
             freeRow.row.widthAnchor.constraint(equalTo: stack.widthAnchor),
             categoriesStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            permissionBanner.widthAnchor.constraint(equalTo: stack.widthAnchor),
         ])
 
+        permissionBanner.setVisible(!SystemPermission.fullDiskAccessGranted())
         buildCategoryRows()
         loadCategories()
     }

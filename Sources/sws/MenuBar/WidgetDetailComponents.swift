@@ -293,6 +293,114 @@ func thresholdColor(_ fraction: Double, yellow: Double = 0.5, red: Double = 0.9)
     return .systemGreen
 }
 
+// MARK: - Segmented capacity bar
+
+/// Horizontal segmented bar — the same shape as the Storage row in
+/// System Settings. Each segment renders proportional to its bytes,
+/// with a 1 pt separator between adjacent segments and one rounded
+/// outer shell. Empty space at the right represents free bytes.
+final class SegmentedCapacityBar: NSView {
+    struct Segment {
+        var color: NSColor
+        var bytes: Int64
+    }
+
+    var totalBytes: Int64 = 0
+    var segments: [Segment] = [] {
+        didSet { needsDisplay = true }
+    }
+    var cornerRadius: CGFloat = 4
+    var trackColor: NSColor = NSColor.white.withAlphaComponent(0.10)
+
+    init() {
+        super.init(frame: NSRect(x: 0, y: 0, width: 240, height: 12))
+        wantsLayer = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: 12)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let bounds = self.bounds
+
+        // Track.
+        let trackPath = NSBezierPath(roundedRect: bounds, xRadius: cornerRadius, yRadius: cornerRadius)
+        trackColor.setFill()
+        trackPath.fill()
+
+        guard totalBytes > 0 else { return }
+
+        // Clip to rounded shell.
+        NSGraphicsContext.saveGraphicsState()
+        trackPath.addClip()
+
+        var x: CGFloat = 0
+        for (i, seg) in segments.enumerated() {
+            guard seg.bytes > 0 else { continue }
+            let w = bounds.width * CGFloat(Double(seg.bytes) / Double(totalBytes))
+            let rect = NSRect(x: x, y: 0, width: w, height: bounds.height)
+            seg.color.setFill()
+            rect.fill()
+            x += w
+            // Subtle 1 pt separator between adjacent segments.
+            if i < segments.count - 1, seg.bytes > 0 {
+                let sep = NSRect(x: x - 0.5, y: 0, width: 1, height: bounds.height)
+                NSColor.black.withAlphaComponent(0.25).setFill()
+                sep.fill()
+            }
+        }
+
+        NSGraphicsContext.restoreGraphicsState()
+    }
+}
+
+/// Color dot + label + value on one line — the same row used by the
+/// storage popover's category legend.
+final class LegendRow: NSView {
+    private let dot = NSView()
+    private let labelField = NSTextField(labelWithString: "")
+    private let valueField = NSTextField(labelWithString: "")
+
+    init(color: NSColor, label: String, value: String = "—") {
+        super.init(frame: .zero)
+        dot.wantsLayer = true
+        dot.layer?.backgroundColor = color.cgColor
+        dot.layer?.cornerRadius = 4
+        dot.translatesAutoresizingMaskIntoConstraints = false
+
+        labelField.font = NSFont.systemFont(ofSize: 11)
+        valueField.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        valueField.textColor = .secondaryLabelColor
+        labelField.stringValue = label
+        valueField.stringValue = value
+
+        let row = NSStackView(views: [dot, labelField, NSView(), valueField])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 6
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.topAnchor.constraint(equalTo: topAnchor),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor),
+            dot.widthAnchor.constraint(equalToConstant: 8),
+            dot.heightAnchor.constraint(equalToConstant: 8),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func update(value: String) { valueField.stringValue = value }
+}
+
 // MARK: - Layout helpers
 
 enum WidgetPopover {

@@ -287,77 +287,49 @@ final class DiskWidget: MenuBarWidget {
 }
 
 private final class DiskDetailView: NSView {
-    private let freeLabel = NSTextField(labelWithString: "— free")
-    private let totalLabel = NSTextField(labelWithString: "")
-    private let bar = CapacityBar()
-    private let deltaLabel = NSTextField(labelWithString: "")
+    /// Number of legend rows shown beneath the bar.
+    private static let legendTopN = 5
 
-    private var usedRow: (row: NSView, value: NSTextField)!
-    private var purgeableRow: (row: NSView, value: NSTextField)!
-    private var freeRow: (row: NSView, value: NSTextField)!
-
-    private let categoriesHeading = NSTextField(labelWithString: "Folders")
-    private let categoriesStatus = NSTextField(labelWithString: "")
-    private let categoriesStack = NSStackView()
-    private var categoryRows: [String: NSTextField] = [:]
+    private let headlineLabel = NSTextField(labelWithString: "—")
+    private let bar = SegmentedCapacityBar()
+    private let statusLabel = NSTextField(labelWithString: "")
+    private let legendStack = NSStackView()
     private let permissionBanner = PermissionBanner()
+    private var lastUsedBytes: Int64 = 0
 
     init() {
         super.init(frame: .zero)
-        freeLabel.font = NSFont.systemFont(ofSize: 18, weight: .semibold)
-        totalLabel.font = NSFont.systemFont(ofSize: 11)
-        totalLabel.textColor = .secondaryLabelColor
-        deltaLabel.font = NSFont.systemFont(ofSize: 11)
-        deltaLabel.textColor = .secondaryLabelColor
+        headlineLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        headlineLabel.maximumNumberOfLines = 2
 
         bar.translatesAutoresizingMaskIntoConstraints = false
-        bar.thresholds = (yellow: 0.85, red: 0.95)
 
-        usedRow = WidgetPopover.labeledRow("Used", value: "—")
-        purgeableRow = WidgetPopover.labeledRow("Purgeable", value: "—")
-        freeRow = WidgetPopover.labeledRow("Free", value: "—")
+        statusLabel.font = NSFont.systemFont(ofSize: 10)
+        statusLabel.textColor = .tertiaryLabelColor
 
-        let headline = NSStackView(views: [freeLabel, NSView(), totalLabel])
-        headline.orientation = .horizontal
-        headline.alignment = .firstBaseline
-
-        let volumeBreakdown = NSStackView(views: [usedRow.row, purgeableRow.row, freeRow.row])
-        volumeBreakdown.orientation = .vertical
-        volumeBreakdown.alignment = .leading
-        volumeBreakdown.spacing = 2
-
-        categoriesHeading.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
-        categoriesHeading.textColor = .secondaryLabelColor
-        categoriesStatus.font = NSFont.systemFont(ofSize: 10)
-        categoriesStatus.textColor = .tertiaryLabelColor
-
-        categoriesStack.orientation = .vertical
-        categoriesStack.alignment = .leading
-        categoriesStack.spacing = 2
+        legendStack.orientation = .vertical
+        legendStack.alignment = .leading
+        legendStack.spacing = 2
 
         permissionBanner.configure(
             title: "Full Disk Access is off",
-            body: "Folder sizes still work for ~/Documents, Downloads, Pictures, etc. Grant FDA for accurate totals on system-protected paths.",
+            body: "Categories still work for /Applications and your home folders. Grant FDA for accurate Library and tmp totals.",
             settingsURL: SystemPermission.fullDiskAccessSettingsURL
         )
         permissionBanner.translatesAutoresizingMaskIntoConstraints = false
 
         let stack = NSStackView(views: [
-            headline,
+            headlineLabel,
             bar,
-            volumeBreakdown,
-            deltaLabel,
-            categoriesHeading,
-            categoriesStack,
-            categoriesStatus,
+            legendStack,
+            statusLabel,
             permissionBanner,
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 6
-        stack.setCustomSpacing(12, after: deltaLabel)
-        stack.setCustomSpacing(4, after: categoriesHeading)
-        stack.setCustomSpacing(10, after: categoriesStatus)
+        stack.spacing = 8
+        stack.setCustomSpacing(6, after: bar)
+        stack.setCustomSpacing(10, after: statusLabel)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -365,79 +337,73 @@ private final class DiskDetailView: NSView {
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            bar.widthAnchor.constraint(greaterThanOrEqualToConstant: 280),
-            usedRow.row.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            purgeableRow.row.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            freeRow.row.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            categoriesStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            bar.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            bar.heightAnchor.constraint(equalToConstant: 12),
+            legendStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
             permissionBanner.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            stack.widthAnchor.constraint(greaterThanOrEqualToConstant: 300),
         ])
 
         permissionBanner.setVisible(!SystemPermission.fullDiskAccessGranted())
-        buildCategoryRows()
-        loadCategories()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func update(m: SystemStats.StorageBreakdown, startupFree: Int64, startupAt: Date) {
-        freeLabel.stringValue = "\(SystemStats.humanBytes(m.free)) free"
-        totalLabel.stringValue = "of \(SystemStats.humanBytes(m.total))"
-        bar.fill = m.usedFraction
-
-        usedRow.value.stringValue = SystemStats.humanBytes(m.used)
-        purgeableRow.value.stringValue = m.purgeable == 0
-            ? "none"
-            : SystemStats.humanBytes(m.purgeable)
-        freeRow.value.stringValue = SystemStats.humanBytes(m.free)
-
+        lastUsedBytes = m.used
         let delta = m.free - startupFree
-        let mins = max(1, Int(Date().timeIntervalSince(startupAt) / 60))
-        let sign = delta >= 0 ? "+" : "−"
-        let mag = SystemStats.humanBytes(abs(delta))
-        deltaLabel.stringValue = "Δ since launch  \(sign)\(mag)  ·  \(mins) min"
-    }
-
-    private func buildCategoryRows() {
-        for category in StorageCategoryScanner.shared.categories {
-            let icon = NSImageView()
-            icon.image = NSImage(systemSymbolName: category.symbol, accessibilityDescription: category.label)
-            icon.contentTintColor = .secondaryLabelColor
-            icon.imageScaling = .scaleProportionallyDown
-            icon.translatesAutoresizingMaskIntoConstraints = false
-
-            let label = NSTextField(labelWithString: category.label)
-            label.font = NSFont.systemFont(ofSize: 11)
-
-            let value = NSTextField(labelWithString: "—")
-            value.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-            value.textColor = .secondaryLabelColor
-
-            let row = NSStackView(views: [icon, label, NSView(), value])
-            row.orientation = .horizontal
-            row.alignment = .centerY
-            row.spacing = 6
-            NSLayoutConstraint.activate([
-                icon.widthAnchor.constraint(equalToConstant: 14),
-                icon.heightAnchor.constraint(equalToConstant: 14),
-                row.widthAnchor.constraint(greaterThanOrEqualToConstant: 280),
-            ])
-            categoriesStack.addArrangedSubview(row)
-            categoryRows[category.id] = value
+        let deltaPart: String
+        if abs(delta) < 1024 * 1024 {
+            deltaPart = ""
+        } else {
+            let sign = delta >= 0 ? "+" : "−"
+            deltaPart = "  ·  Δ \(sign)\(SystemStats.humanBytes(abs(delta)))"
         }
+        headlineLabel.stringValue =
+            "\(SystemStats.humanBytes(m.free)) free of \(SystemStats.humanBytes(m.total))\(deltaPart)"
+        bar.totalBytes = m.total
+        loadCategories()
     }
 
     private func loadCategories() {
-        categoriesStatus.stringValue = "Calculating folder sizes…"
-        StorageCategoryScanner.shared.results { [weak self] results, isCached in
+        statusLabel.stringValue = "Calculating folder sizes…"
+        StorageCategoryScanner.shared.results(usedBytes: lastUsedBytes) { [weak self] results, isCached in
             guard let self = self else { return }
-            for r in results {
-                self.categoryRows[r.category.id]?.stringValue = SystemStats.humanBytes(r.bytes)
-            }
-            self.categoriesStatus.stringValue = isCached
+            self.applyCategories(results)
+            self.statusLabel.stringValue = isCached
                 ? "Cached — refreshing in background…"
                 : "Updated just now"
+        }
+    }
+
+    private func applyCategories(_ results: [StorageCategoryScanner.Result]) {
+        // Segments use the canonical scanner order so colors stay
+        // anchored even as proportions shift.
+        bar.segments = results.map {
+            SegmentedCapacityBar.Segment(color: $0.category.color, bytes: $0.bytes)
+        }
+
+        // Legend lists the top N by size — kept to a minimal vertical
+        // strip per the "no click/hover" rule.
+        let top = results
+            .filter { $0.bytes > 0 }
+            .sorted(by: { $0.bytes > $1.bytes })
+            .prefix(Self.legendTopN)
+
+        for sub in legendStack.arrangedSubviews {
+            legendStack.removeArrangedSubview(sub)
+            sub.removeFromSuperview()
+        }
+        for r in top {
+            let row = LegendRow(
+                color: r.category.color,
+                label: r.category.label,
+                value: SystemStats.humanBytes(r.bytes)
+            )
+            row.translatesAutoresizingMaskIntoConstraints = false
+            legendStack.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: legendStack.widthAnchor).isActive = true
         }
     }
 }

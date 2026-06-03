@@ -105,6 +105,135 @@ final class Sparkline: NSView {
     }
 }
 
+// MARK: - Stacked sparkline
+
+/// Two-series stacked area chart used by CPU (user + system) and
+/// anywhere else we want to break a 0–1 fraction into components.
+/// Bottom series renders first (`primary`), then the second sits on
+/// top of it (`secondary`).
+final class StackedSparkline: NSView {
+    struct Point {
+        var primary: Double
+        var secondary: Double
+    }
+
+    private var samples: [Point] = []
+    var capacity: Int = 60
+    /// y-axis ceiling. Sum is clamped at this.
+    var yMax: Double = 1.0
+    var primaryColor: NSColor = .systemBlue
+    var secondaryColor: NSColor = .systemRed
+    var gridColor: NSColor = NSColor.separatorColor.withAlphaComponent(0.35)
+
+    init() {
+        super.init(frame: NSRect(x: 0, y: 0, width: 240, height: 60))
+        wantsLayer = true
+        layer?.backgroundColor = NSColor(white: 0.0, alpha: 0.08).cgColor
+        layer?.cornerRadius = 6
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func add(_ point: Point) {
+        samples.append(point)
+        if samples.count > capacity {
+            samples.removeFirst(samples.count - capacity)
+        }
+        needsDisplay = true
+    }
+
+    func reset() {
+        samples.removeAll()
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let r = bounds.insetBy(dx: 4, dy: 4)
+        guard r.width > 0, r.height > 0 else { return }
+
+        gridColor.setStroke()
+        let grid = NSBezierPath()
+        grid.lineWidth = 0.5
+        for frac in [0.25, 0.5, 0.75] {
+            let y = r.minY + r.height * CGFloat(1.0 - frac)
+            grid.move(to: NSPoint(x: r.minX, y: y))
+            grid.line(to: NSPoint(x: r.maxX, y: y))
+        }
+        grid.stroke()
+
+        guard !samples.isEmpty else { return }
+        let step = samples.count > 1 ? r.width / CGFloat(samples.count - 1) : r.width
+
+        func yFor(_ value: Double) -> CGFloat {
+            r.minY + r.height * CGFloat(min(value, yMax) / yMax)
+        }
+
+        let primaryFill = NSBezierPath()
+        let primaryLine = NSBezierPath()
+        let secondaryFill = NSBezierPath()
+        let secondaryLine = NSBezierPath()
+
+        primaryFill.move(to: NSPoint(x: r.minX, y: r.minY))
+        secondaryFill.move(to: NSPoint(x: r.minX, y: r.minY))
+
+        for (i, p) in samples.enumerated() {
+            let x = r.minX + CGFloat(i) * step
+            let yP = yFor(p.primary)
+            let yS = yFor(p.primary + p.secondary)
+            let pPoint = NSPoint(x: x, y: yP)
+            let sPoint = NSPoint(x: x, y: yS)
+            if i == 0 {
+                primaryLine.move(to: pPoint)
+                secondaryLine.move(to: sPoint)
+                primaryFill.line(to: pPoint)
+                secondaryFill.line(to: sPoint)
+            } else {
+                primaryLine.line(to: pPoint)
+                secondaryLine.line(to: sPoint)
+                primaryFill.line(to: pPoint)
+                secondaryFill.line(to: sPoint)
+            }
+        }
+        let last = samples.count - 1
+        let lastX = r.minX + CGFloat(last) * step
+        primaryFill.line(to: NSPoint(x: lastX, y: r.minY))
+        primaryFill.close()
+        secondaryFill.line(to: NSPoint(x: lastX, y: r.minY))
+        secondaryFill.close()
+
+        // Bottom layer first.
+        primaryColor.withAlphaComponent(0.30).setFill()
+        primaryFill.fill()
+        secondaryColor.withAlphaComponent(0.30).setFill()
+        // Draw secondary as the area above primary. Re-build a polygon
+        // for [primary line ... secondary line back] so the fill sits
+        // on top of the primary band instead of from x-axis.
+        let band = NSBezierPath()
+        for (i, p) in samples.enumerated() {
+            let x = r.minX + CGFloat(i) * step
+            let y = yFor(p.primary)
+            if i == 0 { band.move(to: NSPoint(x: x, y: y)) }
+            else { band.line(to: NSPoint(x: x, y: y)) }
+        }
+        for (i, p) in samples.enumerated().reversed() {
+            let x = r.minX + CGFloat(i) * step
+            let y = yFor(p.primary + p.secondary)
+            band.line(to: NSPoint(x: x, y: y))
+        }
+        band.close()
+        band.fill()
+
+        primaryColor.setStroke()
+        primaryLine.lineWidth = 1.2
+        primaryLine.stroke()
+        secondaryColor.setStroke()
+        secondaryLine.lineWidth = 1.2
+        secondaryLine.stroke()
+    }
+}
+
 // MARK: - Capacity bar
 
 /// Native fill bar for storage / quota readouts. Wraps NSLevelIndicator

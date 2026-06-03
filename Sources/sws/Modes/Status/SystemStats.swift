@@ -8,13 +8,25 @@ enum SystemStats {
 
     // MARK: - CPU
 
-    /// Returns CPU usage as a 0–1 fraction (averaged across cores)
-    /// since the last call. Stateful — needs a single owner.
+    /// CPU usage split between user (apps) and system (kernel) since
+    /// the last call. Each component is a 0–1 fraction; `total` is
+    /// their sum.
+    struct CPULoad {
+        var user: Double
+        var system: Double
+        var total: Double { user + system }
+    }
+
+    /// Returns CPU usage split into user / system fractions
+    /// (averaged across cores) since the last call. Stateful — needs
+    /// a single owner.
     final class CPUSampler {
         private var lastTotal: UInt64 = 0
         private var lastIdle: UInt64 = 0
+        private var lastUser: UInt64 = 0
+        private var lastSystem: UInt64 = 0
 
-        func sample() -> Double {
+        func sample() -> CPULoad {
             var info = host_cpu_load_info()
             var size = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info_data_t>.size / MemoryLayout<integer_t>.size)
             let result = withUnsafeMutablePointer(to: &info) {
@@ -22,20 +34,27 @@ enum SystemStats {
                     host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, $0, &size)
                 }
             }
-            guard result == KERN_SUCCESS else { return 0 }
+            guard result == KERN_SUCCESS else { return CPULoad(user: 0, system: 0) }
             let user   = UInt64(info.cpu_ticks.0)
             let system = UInt64(info.cpu_ticks.1)
             let idle   = UInt64(info.cpu_ticks.2)
             let nice   = UInt64(info.cpu_ticks.3)
+            // Nice is user-space at low priority — count it with user.
             let total = user &+ system &+ idle &+ nice
             defer {
                 lastTotal = total
                 lastIdle = idle
+                lastUser = user &+ nice
+                lastSystem = system
             }
             let totalΔ = total &- lastTotal
-            let idleΔ  = idle  &- lastIdle
-            guard totalΔ > 0 else { return 0 }
-            return 1.0 - Double(idleΔ) / Double(totalΔ)
+            guard totalΔ > 0 else { return CPULoad(user: 0, system: 0) }
+            let userΔ   = (user &+ nice) &- lastUser
+            let systemΔ = system &- lastSystem
+            return CPULoad(
+                user: Double(userΔ) / Double(totalΔ),
+                system: Double(systemΔ) / Double(totalΔ)
+            )
         }
     }
 

@@ -25,24 +25,24 @@ final class CPUWidget: MenuBarWidget {
     let pollInterval: TimeInterval = 2
     private let sampler = SystemStats.CPUSampler()
     private var lastValue = "  0%"
-    private var history: [Double] = []
+    private var history: [SystemStats.CPULoad] = []
     private weak var detail: CPUDetailView?
     private static let reserved = reserveWidth(top: "CPU", longestBottom: "100%")
 
     func render() -> MenuBarRendering {
-        let pct = (sampler.sample() * 100).rounded()
-        let clamped = max(0, min(100, pct))
-        history.append(clamped)
+        let load = sampler.sample()
+        history.append(load)
         if history.count > 120 { history.removeFirst(history.count - 120) }
-        lastValue = String(format: "%3d%%", Int(clamped))
-        detail?.update(value: clamped, history: history)
+        let total = (load.total * 100).rounded()
+        lastValue = String(format: "%3d%%", max(0, min(100, Int(total))))
+        detail?.update(current: load, history: history)
         return .twoLines(top: "CPU", bottom: lastValue, minWidth: Self.reserved)
     }
     func currentValue() -> String { lastValue.trimmingCharacters(in: .whitespaces) }
 
     func detailView() -> NSView? {
         let v = CPUDetailView()
-        v.update(value: history.last ?? 0, history: history)
+        v.update(current: history.last ?? SystemStats.CPULoad(user: 0, system: 0), history: history)
         detail = v
         return v
     }
@@ -50,26 +50,32 @@ final class CPUWidget: MenuBarWidget {
 
 private final class CPUDetailView: NSView {
     private let valueLabel = NSTextField(labelWithString: "—%")
-    private let avgLabel = NSTextField(labelWithString: "")
-    private let spark = Sparkline()
+    private let breakdownLabel = NSTextField(labelWithString: "")
+    private let userSwatch = ColorSwatch(color: .systemBlue, label: "user")
+    private let systemSwatch = ColorSwatch(color: .systemRed, label: "system")
+    private let spark = StackedSparkline()
 
     init() {
         super.init(frame: .zero)
         valueLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 28, weight: .semibold)
+        breakdownLabel.font = NSFont.systemFont(ofSize: 11)
+        breakdownLabel.textColor = .secondaryLabelColor
 
-        avgLabel.font = NSFont.systemFont(ofSize: 11)
-        avgLabel.textColor = .secondaryLabelColor
-
-        spark.lineColor = .systemBlue
-        spark.fillColor = NSColor.systemBlue.withAlphaComponent(0.18)
-        spark.yRange = 0...100
+        spark.primaryColor = .systemBlue       // user — bottom band
+        spark.secondaryColor = .systemRed      // system — stacked on top
+        spark.yMax = 1.0
         spark.translatesAutoresizingMaskIntoConstraints = false
 
-        let headline = NSStackView(views: [valueLabel, NSView(), avgLabel])
+        let legend = NSStackView(views: [userSwatch, systemSwatch, NSView()])
+        legend.orientation = .horizontal
+        legend.spacing = 10
+        legend.alignment = .centerY
+
+        let headline = NSStackView(views: [valueLabel, NSView(), breakdownLabel])
         headline.orientation = .horizontal
         headline.alignment = .firstBaseline
 
-        let stack = NSStackView(views: [headline, spark])
+        let stack = NSStackView(views: [headline, spark, legend])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 6
@@ -88,16 +94,50 @@ private final class CPUDetailView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func update(value: Double, history: [Double]) {
-        valueLabel.stringValue = String(format: "%.0f%%", value)
-        if !history.isEmpty {
-            let avg = history.reduce(0, +) / Double(history.count)
-            let mx = history.max() ?? value
-            avgLabel.stringValue = String(format: "avg %.0f%%  ·  peak %.0f%%", avg, mx)
-        }
+    func update(current: SystemStats.CPULoad, history: [SystemStats.CPULoad]) {
+        valueLabel.stringValue = String(format: "%.0f%%", current.total * 100)
+        breakdownLabel.stringValue = String(
+            format: "user %.0f%%  ·  system %.0f%%",
+            current.user * 100, current.system * 100
+        )
         spark.reset()
-        for v in history { spark.add(v) }
+        for sample in history {
+            spark.add(StackedSparkline.Point(primary: sample.user, secondary: sample.system))
+        }
     }
+}
+
+/// Tiny legend chip: filled dot + label.
+private final class ColorSwatch: NSView {
+    init(color: NSColor, label: String) {
+        super.init(frame: .zero)
+        let dot = NSView()
+        dot.wantsLayer = true
+        dot.layer?.backgroundColor = color.cgColor
+        dot.layer?.cornerRadius = 4
+        dot.translatesAutoresizingMaskIntoConstraints = false
+
+        let l = NSTextField(labelWithString: label)
+        l.font = NSFont.systemFont(ofSize: 11)
+        l.textColor = .secondaryLabelColor
+
+        addSubview(dot)
+        addSubview(l)
+        l.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            dot.leadingAnchor.constraint(equalTo: leadingAnchor),
+            dot.centerYAnchor.constraint(equalTo: centerYAnchor),
+            dot.widthAnchor.constraint(equalToConstant: 8),
+            dot.heightAnchor.constraint(equalToConstant: 8),
+            l.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 4),
+            l.centerYAnchor.constraint(equalTo: centerYAnchor),
+            l.trailingAnchor.constraint(equalTo: trailingAnchor),
+            heightAnchor.constraint(equalToConstant: 14),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
 }
 
 // MARK: - RAM

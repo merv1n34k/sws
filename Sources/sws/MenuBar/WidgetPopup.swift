@@ -17,13 +17,20 @@ final class WidgetPopup {
 
         content.translatesAutoresizingMaskIntoConstraints = false
 
+        let cornerRadius: CGFloat = 10
         let visual = NSVisualEffectView()
         visual.material = .menu
         visual.blendingMode = .behindWindow
         visual.state = .active
         visual.wantsLayer = true
-        visual.layer?.cornerRadius = 10
+        visual.layer?.cornerRadius = cornerRadius
+        visual.layer?.cornerCurve = .continuous
         visual.layer?.masksToBounds = true
+        // NSWindow's shadow is rectangular by default. Setting
+        // `maskImage` to a 9-slice rounded-rect bitmap makes the shadow
+        // follow the same rounded shape as the contentView, so the
+        // popover renders without the sharp-corner shadow overlay.
+        visual.maskImage = Self.makeMaskImage(cornerRadius: cornerRadius)
         visual.translatesAutoresizingMaskIntoConstraints = false
         visual.addSubview(content)
 
@@ -104,5 +111,24 @@ final class WidgetPopup {
     private func removeDismissalMonitors() {
         if let m = globalMonitor { NSEvent.removeMonitor(m); globalMonitor = nil }
         if let m = localMonitor { NSEvent.removeMonitor(m); localMonitor = nil }
+    }
+
+    /// 9-slice rounded-rect mask. NSWindow uses the mask's alpha to
+    /// shape its shadow, which is why we need this instead of just
+    /// setting `layer.cornerRadius`.
+    private static func makeMaskImage(cornerRadius: CGFloat) -> NSImage {
+        let edge = cornerRadius * 2 + 1
+        let img = NSImage(size: NSSize(width: edge, height: edge), flipped: false) { rect in
+            let path = NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius)
+            NSColor.black.setFill()
+            path.fill()
+            return true
+        }
+        img.capInsets = NSEdgeInsets(
+            top: cornerRadius, left: cornerRadius,
+            bottom: cornerRadius, right: cornerRadius
+        )
+        img.resizingMode = .stretch
+        return img
     }
 }

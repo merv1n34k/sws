@@ -82,13 +82,15 @@ install: app
 	@# Reset TCC grants so the new build's cdhash is re-evaluated on
 	@# first launch. Ad-hoc signed bundles can hold stale TCC entries
 	@# when the cdhash changes; resetting here makes every install a
-	@# clean slate. Also clear the UserDefaults flag that suppresses
-	@# the FDA prompt so the app re-asks on next launch.
+	@# clean slate.
 	@tccutil reset ScreenCapture com.merv1n34k.sws 2>/dev/null || true
 	@tccutil reset SystemPolicyAllFiles com.merv1n34k.sws 2>/dev/null || true
-	@defaults delete com.merv1n34k.sws fdaPromptShown 2>/dev/null || true
+	@tccutil reset SystemPolicyDesktopFolder com.merv1n34k.sws 2>/dev/null || true
+	@tccutil reset SystemPolicyDocumentsFolder com.merv1n34k.sws 2>/dev/null || true
+	@tccutil reset SystemPolicyDownloadsFolder com.merv1n34k.sws 2>/dev/null || true
+	@tccutil reset SystemPolicyRemovableVolumes com.merv1n34k.sws 2>/dev/null || true
 	@echo "Installed $(APPS_DIR)/$(APP_NAME).app"
-	@echo "(TCC reset — Screen Recording + Full Disk Access prompts will reappear on first launch)"
+	@echo "(TCC reset — native macOS prompts will reappear on first access)"
 	@echo "Run with: open $(APPS_DIR)/$(APP_NAME).app"
 
 uninstall:

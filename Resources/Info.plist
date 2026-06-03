@@ -30,6 +30,14 @@
     <true/>
     <key>NSScreenCaptureUsageDescription</key>
     <string>SWS reads pixel colors from your screen for the color picker.</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>SWS sums Desktop file sizes for the Storage widget category breakdown.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>SWS sums Documents file sizes for the Storage widget category breakdown.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>SWS sums Downloads file sizes for the Storage widget category breakdown.</string>
+    <key>NSRemovableVolumesUsageDescription</key>
+    <string>SWS reads sizes from removable volumes for the external storage widget.</string>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
 </dict>

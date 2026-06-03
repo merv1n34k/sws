@@ -7,6 +7,7 @@ import AppKit
 /// the macOS-native menu material.
 final class WidgetPopup {
     private var window: NSWindow?
+    private weak var anchorWindow: NSWindow?
     private var globalMonitor: Any?
     private var localMonitor: Any?
 
@@ -80,6 +81,7 @@ final class WidgetPopup {
         w.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         window = w
+        anchorWindow = buttonWindow
 
         installDismissalMonitors()
     }
@@ -97,13 +99,19 @@ final class WidgetPopup {
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             self?.close()
         }
-        // Click inside sws but outside our popup → close. Clicks inside
-        // the popup pass through normally so the user can interact with
-        // it (Refresh button, etc.).
+        // Click inside sws but outside our popup → close. Two carve-outs:
+        // - Clicks inside the popup itself pass through (user can hit
+        //   the Refresh / Unpin buttons).
+        // - Clicks on the same anchor status item are NOT closed here;
+        //   instead they're forwarded to the button action which then
+        //   toggles the popup off. Closing here would race with the
+        //   button action, which sees the popup as already closed and
+        //   reopens it.
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            if event.window !== self?.window {
-                self?.close()
-            }
+            guard let self = self else { return event }
+            if event.window === self.window { return event }
+            if event.window === self.anchorWindow { return event }
+            self.close()
             return event
         }
     }

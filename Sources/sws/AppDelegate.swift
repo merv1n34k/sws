@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupWindow()
         registerDefaultHotkeyOnly()
         ensureScreenCapturePermission()
+        ensureFullDiskAccessPrompt()
     }
 
     /// Color mode needs Screen Recording permission. macOS shows its
@@ -39,6 +40,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard config.modes.contains(where: { $0.type == "color" }) else { return }
         if CGPreflightScreenCaptureAccess() { return }
         _ = CGRequestScreenCaptureAccess()
+    }
+
+    /// Full Disk Access has no public "request" API — macOS will not
+    /// auto-prompt the way Screen Recording does. We show an NSAlert
+    /// once per fresh install that deep-links to the FDA pane.
+    ///
+    /// The `fdaPromptShown` default is cleared by `make install` (see
+    /// Makefile), so this fires again on every install / reinstall.
+    /// After grant or decline, the storage popover's persistent banner
+    /// covers ongoing nudging.
+    private func ensureFullDiskAccessPrompt() {
+        let defaults = UserDefaults.standard
+        let key = "fdaPromptShown"
+        if defaults.bool(forKey: key) { return }
+        if SystemPermission.fullDiskAccessGranted() {
+            defaults.set(true, forKey: key)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Grant Full Disk Access (optional)"
+        alert.informativeText = "SWS uses Full Disk Access to compute accurate sizes for system-protected folders (/Library, /private/tmp) in the Storage widget. The widget still works without it — only some categories may read as smaller than they really are. You can grant it now or any time in System Settings → Privacy & Security."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Open Settings…")
+        alert.addButton(withTitle: "Later")
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(SystemPermission.fullDiskAccessSettingsURL)
+        }
+        defaults.set(true, forKey: key)
     }
 
     // MARK: - Mode lifecycle

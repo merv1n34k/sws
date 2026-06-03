@@ -242,10 +242,21 @@ final class StackedSparkline: NSView {
 final class CapacityBar: NSView {
     private let indicator: NSLevelIndicator
 
-    /// `fill` is 0...1.
+    /// `fill` is 0...1. Setting it also recomputes the warning/critical
+    /// thresholds so the NSLevelIndicator switches between green /
+    /// yellow / red segments based on the current value.
     var fill: Double = 0 {
         didSet {
             indicator.doubleValue = max(0, min(1, fill))
+        }
+    }
+
+    /// Thresholds at which the bar tint shifts to yellow then red.
+    /// `(yellowAt, redAt)` — values are 0...1.
+    var thresholds: (yellow: Double, red: Double) = (0.85, 0.95) {
+        didSet {
+            indicator.warningValue = thresholds.yellow
+            indicator.criticalValue = thresholds.red
         }
     }
 
@@ -255,8 +266,8 @@ final class CapacityBar: NSView {
         indicator.levelIndicatorStyle = .continuousCapacity
         indicator.minValue = 0
         indicator.maxValue = 1
-        indicator.warningValue = 0.85
-        indicator.criticalValue = 0.95
+        indicator.warningValue = thresholds.yellow
+        indicator.criticalValue = thresholds.red
         indicator.translatesAutoresizingMaskIntoConstraints = false
         addSubview(indicator)
         NSLayoutConstraint.activate([
@@ -270,6 +281,16 @@ final class CapacityBar: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+}
+
+/// Returns a green/yellow/red color matching the green-yellow-red
+/// thresholds for the given fraction (0...1). Used by widgets that
+/// want their headline number to mirror the capacity bar's segment
+/// color.
+func thresholdColor(_ fraction: Double, yellow: Double = 0.5, red: Double = 0.9) -> NSColor {
+    if fraction >= red { return .systemRed }
+    if fraction >= yellow { return .systemYellow }
+    return .systemGreen
 }
 
 // MARK: - Layout helpers

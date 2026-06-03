@@ -60,8 +60,32 @@ enum SystemStats {
 
     // MARK: - RAM
 
-    /// Used / total memory in bytes.
-    static func memoryUsage() -> (used: UInt64, total: UInt64) {
+    /// Detailed memory breakdown. `used` matches Apple's Activity
+    /// Monitor formula (wired + active + compressed).
+    struct MemoryBreakdown {
+        var total: UInt64
+        /// App memory + wired + compressed — what Activity Monitor
+        /// calls "Memory Used".
+        var used: UInt64
+        /// File-backed cache (inactive + speculative + purgeable) —
+        /// "Cached Files" in Activity Monitor.
+        var cached: UInt64
+        /// Compressed memory.
+        var compressed: UInt64
+        /// Wired (kernel) memory.
+        var wired: UInt64
+        /// Swap currently committed to disk.
+        var swapUsed: UInt64
+
+        var usedFraction: Double {
+            total > 0 ? Double(used) / Double(total) : 0
+        }
+    }
+
+    /// Full memory breakdown — used by the menu-bar widget for the
+    /// detail popover. `memoryUsage()` is kept as a thin wrapper for
+    /// callers that just want used/total.
+    static func memoryBreakdown() -> MemoryBreakdown {
         let total = ProcessInfo.processInfo.physicalMemory
         var stats = vm_statistics64()
         var size = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
@@ -70,11 +94,40 @@ enum SystemStats {
                 host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &size)
             }
         }
-        guard result == KERN_SUCCESS else { return (0, total) }
+        guard result == KERN_SUCCESS else {
+            return MemoryBreakdown(total: total, used: 0, cached: 0, compressed: 0, wired: 0, swapUsed: 0)
+        }
         let pageSize = UInt64(vm_kernel_page_size)
-        // Apple's Activity Monitor counts wired + active + compressed.
-        let used = (UInt64(stats.wire_count) + UInt64(stats.active_count) + UInt64(stats.compressor_page_count)) * pageSize
-        return (used, total)
+        let wired      = UInt64(stats.wire_count) * pageSize
+        let active     = UInt64(stats.active_count) * pageSize
+        let compressed = UInt64(stats.compressor_page_count) * pageSize
+        let inactive   = UInt64(stats.inactive_count) * pageSize
+        let purgeable  = UInt64(stats.purgeable_count) * pageSize
+        let speculative = UInt64(stats.speculative_count) * pageSize
+        let used = wired + active + compressed
+        let cached = inactive + speculative + purgeable
+        return MemoryBreakdown(
+            total: total,
+            used: used,
+            cached: cached,
+            compressed: compressed,
+            wired: wired,
+            swapUsed: swapUsedBytes()
+        )
+    }
+
+    /// Used / total memory in bytes (Activity-Monitor-equivalent).
+    static func memoryUsage() -> (used: UInt64, total: UInt64) {
+        let m = memoryBreakdown()
+        return (m.used, m.total)
+    }
+
+    /// Returns bytes currently swapped to disk via sysctl vm.swapusage.
+    private static func swapUsedBytes() -> UInt64 {
+        var usage = xsw_usage()
+        var size = MemoryLayout<xsw_usage>.size
+        let rc = sysctlbyname("vm.swapusage", &usage, &size, nil, 0)
+        return rc == 0 ? UInt64(usage.xsu_used) : 0
     }
 
     // MARK: - Storage

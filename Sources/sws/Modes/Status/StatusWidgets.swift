@@ -148,27 +148,27 @@ final class RAMWidget: MenuBarWidget {
     let pollInterval: TimeInterval = 3
     private var lastValue = "  0%"
     private var history: [Double] = []
-    private var lastUsedBytes: UInt64 = 0
-    private var lastTotalBytes: UInt64 = 0
+    private var lastBreakdown: SystemStats.MemoryBreakdown?
     private weak var detail: RAMDetailView?
     private static let reserved = reserveWidth(top: "RAM", longestBottom: "100%")
 
     func render() -> MenuBarRendering {
-        let (used, total) = SystemStats.memoryUsage()
-        lastUsedBytes = used
-        lastTotalBytes = total
-        let pct = total > 0 ? Double(used) / Double(total) * 100 : 0
+        let m = SystemStats.memoryBreakdown()
+        lastBreakdown = m
+        let pct = m.usedFraction * 100
         history.append(pct)
         if history.count > 120 { history.removeFirst(history.count - 120) }
         lastValue = String(format: "%3d%%", Int(pct.rounded()))
-        detail?.update(used: used, total: total, history: history)
+        detail?.update(m: m, history: history)
         return .twoLines(top: "RAM", bottom: lastValue, minWidth: Self.reserved)
     }
     func currentValue() -> String { lastValue.trimmingCharacters(in: .whitespaces) }
 
     func detailView() -> NSView? {
         let v = RAMDetailView()
-        v.update(used: lastUsedBytes, total: lastTotalBytes, history: history)
+        if let m = lastBreakdown {
+            v.update(m: m, history: history)
+        }
         detail = v
         return v
     }
@@ -176,31 +176,47 @@ final class RAMWidget: MenuBarWidget {
 
 private final class RAMDetailView: NSView {
     private let valueLabel = NSTextField(labelWithString: "—%")
-    private let bytesLabel = NSTextField(labelWithString: "")
+    private let totalLabel = NSTextField(labelWithString: "")
     private let bar = CapacityBar()
     private let spark = Sparkline()
+
+    private var wiredRow: (row: NSView, value: NSTextField)!
+    private var compressedRow: (row: NSView, value: NSTextField)!
+    private var cachedRow: (row: NSView, value: NSTextField)!
+    private var swapRow: (row: NSView, value: NSTextField)!
 
     init() {
         super.init(frame: .zero)
         valueLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 28, weight: .semibold)
-        bytesLabel.font = NSFont.systemFont(ofSize: 11)
-        bytesLabel.textColor = .secondaryLabelColor
+        totalLabel.font = NSFont.systemFont(ofSize: 11)
+        totalLabel.textColor = .secondaryLabelColor
 
-        spark.lineColor = .systemGreen
-        spark.fillColor = NSColor.systemGreen.withAlphaComponent(0.18)
         spark.yRange = 0...100
         spark.translatesAutoresizingMaskIntoConstraints = false
 
         bar.translatesAutoresizingMaskIntoConstraints = false
+        // User-requested thresholds — green up to 50%, yellow up to
+        // 90%, red beyond.
+        bar.thresholds = (yellow: 0.5, red: 0.9)
 
-        let headline = NSStackView(views: [valueLabel, NSView(), bytesLabel])
+        wiredRow = WidgetPopover.labeledRow("Wired", value: "—")
+        compressedRow = WidgetPopover.labeledRow("Compressed", value: "—")
+        cachedRow = WidgetPopover.labeledRow("Cached files", value: "—")
+        swapRow = WidgetPopover.labeledRow("Swap used", value: "—")
+
+        let headline = NSStackView(views: [valueLabel, NSView(), totalLabel])
         headline.orientation = .horizontal
         headline.alignment = .firstBaseline
 
-        let stack = NSStackView(views: [headline, bar, spark])
+        let categories = NSStackView(views: [wiredRow.row, compressedRow.row, cachedRow.row, swapRow.row])
+        categories.orientation = .vertical
+        categories.alignment = .leading
+        categories.spacing = 2
+
+        let stack = NSStackView(views: [headline, bar, spark, categories])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 6
+        stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -211,19 +227,36 @@ private final class RAMDetailView: NSView {
             bar.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
             spark.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
             spark.heightAnchor.constraint(equalToConstant: 60),
+            wiredRow.row.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            compressedRow.row.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            cachedRow.row.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            swapRow.row.widthAnchor.constraint(equalTo: stack.widthAnchor),
         ])
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func update(used: UInt64, total: UInt64, history: [Double]) {
-        let pct = total > 0 ? Double(used) / Double(total) * 100 : 0
+    func update(m: SystemStats.MemoryBreakdown, history: [Double]) {
+        let frac = m.usedFraction
+        let pct = frac * 100
+        let tint = thresholdColor(frac, yellow: 0.5, red: 0.9)
+
         valueLabel.stringValue = String(format: "%.0f%%", pct)
-        bytesLabel.stringValue = "\(SystemStats.humanBytes(Int64(used))) / \(SystemStats.humanBytes(Int64(total)))"
-        bar.fill = total > 0 ? Double(used) / Double(total) : 0
+        valueLabel.textColor = tint
+        totalLabel.stringValue = "\(SystemStats.humanBytes(Int64(m.used))) / \(SystemStats.humanBytes(Int64(m.total)))"
+        bar.fill = frac
+        spark.lineColor = tint
+        spark.fillColor = tint.withAlphaComponent(0.18)
         spark.reset()
         for v in history { spark.add(v) }
+
+        wiredRow.value.stringValue = SystemStats.humanBytes(Int64(m.wired))
+        compressedRow.value.stringValue = SystemStats.humanBytes(Int64(m.compressed))
+        cachedRow.value.stringValue = SystemStats.humanBytes(Int64(m.cached))
+        swapRow.value.stringValue = m.swapUsed == 0
+            ? "none"
+            : SystemStats.humanBytes(Int64(m.swapUsed))
     }
 }
 

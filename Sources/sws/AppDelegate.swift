@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             maxEntries: config.clipboardMaxEntries,
             maxEntryBytes: config.clipboardMaxEntryBytes
         )
+        ExternalStorageMonitor.shared.start()
         buildModes()
         setupMainMenu()
         setupStatusItem()

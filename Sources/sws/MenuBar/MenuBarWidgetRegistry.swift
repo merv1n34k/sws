@@ -87,11 +87,43 @@ final class MenuBarWidgetRegistry {
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 
+    // MARK: - Volume widgets
+    //
+    // Storage-specific spawn path used by ExternalStorageMonitor. These
+    // widgets follow hardware (mount / unmount), not user pinning, so
+    // they don't touch `pinnedIds` or the persistent state. The path
+    // is intentionally scoped to volumes — no general "auto-spawn" API
+    // — to keep the lifecycle predictable.
+
+    func spawnVolumeWidget(_ widget: MenuBarWidget) {
+        guard activeWidgets[widget.id] == nil else { return }
+        spawn(id: widget.id, widget: widget)
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
+    }
+
+    func removeVolumeWidget(id: String) {
+        // Same teardown as unpin, minus the pinnedIds bookkeeping.
+        guard activeWidgets[id] != nil else { return }
+        timers.removeValue(forKey: id)?.invalidate()
+        if let item = statusItems.removeValue(forKey: id) {
+            if let btn = item.button {
+                buttonToId.removeValue(forKey: ObjectIdentifier(btn))
+            }
+            NSStatusBar.system.removeStatusItem(item)
+        }
+        popovers.removeValue(forKey: id)?.close()
+        activeWidgets.removeValue(forKey: id)
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
+    }
+
     // MARK: - Internal
 
     private func spawn(id: String) {
         guard let factory = available[id] else { return }
-        let widget = factory()
+        spawn(id: id, widget: factory())
+    }
+
+    private func spawn(id: String, widget: MenuBarWidget) {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         activeWidgets[id] = widget
         statusItems[id] = item

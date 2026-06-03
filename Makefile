@@ -102,10 +102,10 @@ docs/node_modules: docs/package.json
 	@touch docs/node_modules
 
 docs: docs/node_modules
-	@cd docs && bun run dev
+	@cd docs && bun run docs:dev
 
 docs-build: docs/node_modules
-	@cd docs && bun run build
+	@cd docs && bun run docs:build
 
 docs-preview: docs-build
-	@cd docs && bun run preview
+	@cd docs && bun run docs:preview

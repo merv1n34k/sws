@@ -3,9 +3,6 @@ name: Deploy docs
 on:
   push:
     branches: [master]
-    paths:
-      - 'docs/**'
-      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 permissions:
@@ -13,7 +10,6 @@ permissions:
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment; let in-progress runs finish.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -24,17 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-
-      - name: Install dependencies
-        working-directory: docs
-        run: bun install
-
-      - name: Build VitePress
-        working-directory: docs
-        run: bun run build
-
-      - uses: actions/configure-pages@v5
-
+      - run: cd docs && bun install && bun run docs:build
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs/.vitepress/dist
@@ -46,6 +32,5 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
+      - id: deployment
         uses: actions/deploy-pages@v4

@@ -199,30 +199,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // Minimal dropdown — no mode list (use hotkeys / dashboard to
+        // switch). The Preferences window still owns the mode-hotkey
+        // editor.
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Show / Hide", action: #selector(toggleDefault), keyEquivalent: ""))
-        menu.addItem(NSMenuItem.separator())
-
-        // Inline mode list with hotkeys on the right edge so the user
-        // sees what's bound at a glance and can switch by clicking.
-        for id in modeOrder {
-            guard let mode = modes[id] else { continue }
-            let cfg = config.mode(byID: id)
-            let isDefault = (id == config.defaultMode)
-            let title = isDefault ? "★ " + mode.displayName : mode.displayName
-            let item = NSMenuItem(
-                title: title,
-                action: #selector(switchModeFromMenu(_:)),
-                keyEquivalent: ""
-            )
-            if let hk = cfg?.hotkey {
-                item.attributedTitle = menuItemTitle(title, shortcut: hk)
-            }
-            item.representedObject = id
-            item.target = self
-            menu.addItem(item)
-        }
-
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Preferences…", action: #selector(openPreferences), keyEquivalent: ","))
         menu.addItem(NSMenuItem(title: "Open Config File", action: #selector(openConfigFile), keyEquivalent: ""))
@@ -230,37 +211,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit SWS", action: #selector(quitApp), keyEquivalent: "q"))
         statusItem.menu = menu
-    }
-
-    /// Two-column attributed title: mode name on the left, shortcut on
-    /// the right with monospaced font and secondary color. macOS will
-    /// render the tab as a right-align stop.
-    private func menuItemTitle(_ name: String, shortcut: ShortcutConfig) -> NSAttributedString {
-        let modSymbols: [String: String] = [
-            "shift": "⇧", "option": "⌥", "command": "⌘", "control": "⌃",
-        ]
-        let mods = shortcut.modifiers.compactMap { modSymbols[$0.lowercased()] }.joined()
-        let key = shortcut.key.uppercased()
-        let display = "\(mods)\(key)"
-        let para = NSMutableParagraphStyle()
-        para.tabStops = [NSTextTab(textAlignment: .right, location: 180, options: [:])]
-        let s = NSMutableAttributedString(
-            string: "\(name)\t\(display)",
-            attributes: [
-                .paragraphStyle: para,
-                .font: NSFont.menuFont(ofSize: NSFont.systemFontSize),
-            ]
-        )
-        // Subdue the hotkey portion only.
-        let tab = (s.string as NSString).range(of: "\t")
-        if tab.location != NSNotFound {
-            let r = NSRange(location: tab.location, length: s.length - tab.location)
-            s.addAttributes([
-                .foregroundColor: NSColor.secondaryLabelColor,
-                .font: NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize - 1, weight: .regular),
-            ], range: r)
-        }
-        return s
     }
 
     @objc private func openConfigFile() {
@@ -299,7 +249,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             maxEntryBytes: config.clipboardMaxEntryBytes
         )
         buildModes()
-        setupStatusItem()             // rebuilds mode submenu
         registerDefaultHotkeyOnly()
         if window?.isVisible == true {
             registerAllModeHotkeys()
